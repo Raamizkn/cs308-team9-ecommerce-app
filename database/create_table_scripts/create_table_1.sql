@@ -65,5 +65,15 @@ CREATE TABLE public.shopping_cart_assigned_to (
     ON DELETE CASCADE
 );
 
-
+-- create contain_item table
+CREATE TABLE contains_item (
+  quantity INT NOT NULL DEFAULT 1 CHECK (quantity > 0),
+  cart_id INT,
+  pid INT,
+  PRIMARY KEY (cart_id, pid),
+  FOREIGN KEY(cart_id) REFERENCES public.shopping_cart_assigned_to(cart_id)
+    ON DELETE CASCADE,
+  FOREIGN KEY(pid) REFERENCES public.products_belong_to(pid)
+    ON DELETE CASCADE 
+);
 
