@@ -58,6 +58,12 @@ CREATE TABLE public.has_discount (
     ON DELETE CASCADE
 );
 
+-- create shopping cart table
+CREATE TABLE public.shopping_cart_assigned_to (
+  cart_id INT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+  uid UUID UNIQUE REFERENCES public.customers(uid)
+    ON DELETE CASCADE
+);
 
 
 
