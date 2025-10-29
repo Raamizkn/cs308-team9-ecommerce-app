@@ -25,10 +25,10 @@ CREATE POLICY "Allow public read access to discount campaigns"
     USING (true);
 
 
--- HAS_DISCOUNT
+-- applies_to
 
-ALTER TABLE public.has_discount ENABLE ROW LEVEL SECURITY
+ALTER TABLE public.applies_to ENABLE ROW LEVEL SECURITY;
 -- Anyone should be able to see if a product has a discount campaign
 CREATE POLICY "Allow public read access to discount mappings of products"
-    ON pubic.discount_campaigns FOR SELECT
+    ON public.discount_campaigns FOR SELECT
     USING (true);
