@@ -47,8 +47,7 @@ CREATE TABLE public.discount_campaigns (
   rate NUMERIC(3, 2) NOT NULL CHECK (rate > 0 AND rate <= 1)
 );
 
--- create has_discount table
-CREATE TABLE public.has_discount (
+CREATE TABLE public.applies_to (
   did INT,
   pid INT,
   PRIMARY KEY(did, pid),
