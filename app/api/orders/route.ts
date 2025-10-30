@@ -71,3 +71,39 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
+
+export async function PATCH(request: Request) {
+  try {
+    const body = await request.json()
+    const { action, order_id } = body
+
+    if (!action || !order_id) {
+      return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
+    }
+
+    const supabase = await getSupabaseServerClient()
+
+    const { data: order } = await supabase.from("orders").select("*").eq("id", order_id).single()
+    if (!order) {
+      return NextResponse.json({ error: "Order not found" }, { status: 404 })
+    }
+
+    if (action === "cancel") {
+      if (order.status !== "processing") {
+        return NextResponse.json({ error: "Only processing orders can be cancelled" }, { status: 400 })
+      }
+
+      const { error } = await supabase.from("orders").update({ status: "cancelled" }).eq("id", order_id)
+      if (error) {
+        return NextResponse.json({ error: "Failed to cancel order" }, { status: 500 })
+      }
+
+      return NextResponse.json({ success: true })
+    }
+
+    return NextResponse.json({ error: "Unsupported action" }, { status: 400 })
+  } catch (error) {
+    console.error("[Group9] Unexpected error:", error)
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+  }
+}

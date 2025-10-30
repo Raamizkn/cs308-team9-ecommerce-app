@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import Image from "next/image"
 import { PixelHeader } from "@/components/pixel-header"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { getSupabaseBrowserClient } from "@/lib/supabase/client"
 import { useToast } from "@/hooks/use-toast"
 import { Heart, Package, LogOut, User } from "lucide-react"
@@ -16,6 +17,8 @@ export default function ProfilePage() {
   const [user, setUser] = useState<any>(null)
   const [wishlist, setWishlist] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [address, setAddress] = useState("")
+  const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     fetchUserData()
@@ -29,9 +32,24 @@ export default function ProfilePage() {
         data: { user },
       } = await supabase.auth.getUser()
 
+<<<<<<< HEAD
       if (user) {
         const { data } = await supabase.from("users").select("*").eq("id", user.id).single()
         setUser(data || { email: user.email, name: user.user_metadata?.name })
+=======
+      if (authUser) {
+        // Get profile from profiles table (not users table)
+        const { data }: any = await supabase.from("profiles").select("*").eq("uid", authUser.id).single()
+        setUser({
+          id: authUser.id,
+          email: authUser.email,
+          name: data?.name || authUser.user_metadata?.name || "User",
+          address: data?.address || data?.home_address || authUser.user_metadata?.address || "Not provided",
+        })
+        setAddress(
+          (data?.address as string) || (data?.home_address as string) || (authUser.user_metadata?.address as string) || ""
+        )
+>>>>>>> 5e7a0a8 (feat(profile): address display+edit; header: orders icon; orders: cancel/refund rules; api: enforce cancel/refund)
       }
     } catch (error) {
       console.error("[Group9] Error fetching user:", error)
@@ -100,6 +118,41 @@ export default function ProfilePage() {
     }
   }
 
+  const saveAddress = async () => {
+    try {
+      setSaving(true)
+      const supabase = getSupabaseBrowserClient()
+      const {
+        data: { user: authUser },
+      } = await supabase.auth.getUser()
+
+      if (!authUser) return
+
+      const { error } = await (supabase.from("profiles" as any) as any).upsert(
+        [
+          {
+            uid: authUser.id,
+            address,
+            name: user?.name || authUser.user_metadata?.name || "User",
+          },
+        ] as any,
+        { onConflict: "uid" }
+      )
+
+      if (error) {
+        toast({ title: "Save failed", description: error.message, variant: "destructive" })
+        return
+      }
+
+      setUser({ ...user, address: address || "Not provided" })
+      toast({ title: "Address saved", description: "Your home address has been updated." })
+    } catch (e) {
+      toast({ title: "Save failed", description: "Something went wrong.", variant: "destructive" })
+    } finally {
+      setSaving(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-[#f8f9fa]">
@@ -155,9 +208,41 @@ export default function ProfilePage() {
           {/* Main Content */}
           <div className="lg:col-span-3">
             <div className="mb-8">
-              <h1 className="font-[family-name:var(--font-pixel)] text-4xl text-[#1a1a3e] mb-2">MY WISHLIST</h1>
-              <p className="text-[#6c757d] font-semibold">{wishlist.length} items saved</p>
+              <h1 className="font-[family-name:var(--font-pixel)] text-4xl text-[#1a1a3e] mb-2">MY PROFILE</h1>
+              <p className="text-[#6c757d] font-semibold">Your account details</p>
             </div>
+
+            {/* Profile details */}
+            <div className="bg-white border-4 border-black p-6 pixel-shadow-sm mb-8">
+              <h2 className="font-bold text-2xl text-[#1a1a3e] mb-4">PROFILE DETAILS</h2>
+              <div className="space-y-3 text-[#1a1a3e]">
+                <div className="flex items-start justify-between gap-4">
+                  <span className="font-semibold text-[#6c757d]">Name</span>
+                  <span className="font-bold">{user?.name || "User"}</span>
+                </div>
+                <div className="flex items-start justify-between gap-4">
+                  <span className="font-semibold text-[#6c757d]">Email</span>
+                  <span className="font-bold break-all">{user?.email}</span>
+                </div>
+                <div>
+                  <span className="font-semibold text-[#6c757d]">Home address</span>
+                  <div className="mt-2 grid grid-cols-1 gap-2">
+                    <Input
+                      value={address}
+                      onChange={(e) => setAddress(e.target.value)}
+                      placeholder="Enter your home address"
+                      className="border-4 border-black"
+                    />
+                    <Button onClick={saveAddress} disabled={saving} className="w-full bg-[#ffb347] border-4 border-black text-black font-bold">
+                      {saving ? "SAVING..." : "SAVE ADDRESS"}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <h2 className="font-[family-name:var(--font-pixel)] text-3xl text-[#1a1a3e] mb-4">MY WISHLIST</h2>
+            <p className="text-[#6c757d] font-semibold mb-6">{wishlist.length} items saved</p>
 
             {wishlist.length === 0 ? (
               <div className="bg-white border-4 border-black p-12 text-center pixel-shadow-sm">

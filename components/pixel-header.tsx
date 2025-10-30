@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
-import { ShoppingCart, User, Search } from "lucide-react"
+import { ShoppingCart, User, Search, Package } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useCart } from "@/lib/cart-context"
 import { getSupabaseBrowserClient } from "@/lib/supabase/client"
@@ -68,6 +68,17 @@ export function PixelHeader() {
                 <User className="h-5 w-5" />
               </Button>
             </Link>
+            {isAuthenticated && (
+              <Link href="/orders">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="text-white hover:bg-[#3d2660] hover:text-[#ffb347] border-2 border-transparent hover:border-black"
+                >
+                  <Package className="h-5 w-5" />
+                </Button>
+              </Link>
+            )}
             <Link href="/cart">
               <Button
                 variant="ghost"
