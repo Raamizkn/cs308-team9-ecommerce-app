@@ -29,14 +29,9 @@ export default function ProfilePage() {
     try {
       const supabase = getSupabaseBrowserClient()
       const {
-        data: { user },
+        data: { user: authUser },
       } = await supabase.auth.getUser()
 
-<<<<<<< HEAD
-      if (user) {
-        const { data } = await supabase.from("users").select("*").eq("id", user.id).single()
-        setUser(data || { email: user.email, name: user.user_metadata?.name })
-=======
       if (authUser) {
         // Get profile from profiles table (not users table)
         const { data }: any = await supabase.from("profiles").select("*").eq("uid", authUser.id).single()
@@ -49,7 +44,6 @@ export default function ProfilePage() {
         setAddress(
           (data?.address as string) || (data?.home_address as string) || (authUser.user_metadata?.address as string) || ""
         )
->>>>>>> 5e7a0a8 (feat(profile): address display+edit; header: orders icon; orders: cancel/refund rules; api: enforce cancel/refund)
       }
     } catch (error) {
       console.error("[Group9] Error fetching user:", error)
