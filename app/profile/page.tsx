@@ -18,6 +18,7 @@ export default function ProfilePage() {
   const [wishlist, setWishlist] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [address, setAddress] = useState("")
+  const [taxId, setTaxId] = useState("")
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -40,10 +41,12 @@ export default function ProfilePage() {
           email: authUser.email,
           name: data?.name || authUser.user_metadata?.name || "User",
           address: data?.address || data?.home_address || authUser.user_metadata?.address || "Not provided",
+          taxId: data?.tax_id || data?.taxId || "",
         })
         setAddress(
           (data?.address as string) || (data?.home_address as string) || (authUser.user_metadata?.address as string) || ""
         )
+        setTaxId((data?.tax_id as string) || (data?.taxId as string) || "")
       }
     } catch (error) {
       console.error("[Group9] Error fetching user:", error)
@@ -127,6 +130,7 @@ export default function ProfilePage() {
           {
             uid: authUser.id,
             address,
+            tax_id: taxId,
             name: user?.name || authUser.user_metadata?.name || "User",
           },
         ] as any,
@@ -138,8 +142,8 @@ export default function ProfilePage() {
         return
       }
 
-      setUser({ ...user, address: address || "Not provided" })
-      toast({ title: "Address saved", description: "Your home address has been updated." })
+      setUser({ ...user, address: address || "Not provided", taxId: taxId || "" })
+      toast({ title: "Profile saved", description: "Your profile information has been updated." })
     } catch (e) {
       toast({ title: "Save failed", description: "Something went wrong.", variant: "destructive" })
     } finally {
@@ -227,8 +231,19 @@ export default function ProfilePage() {
                       placeholder="Enter your home address"
                       className="border-4 border-black"
                     />
+                  </div>
+                </div>
+                <div>
+                  <span className="font-semibold text-[#6c757d]">Tax ID</span>
+                  <div className="mt-2 grid grid-cols-1 gap-2">
+                    <Input
+                      value={taxId}
+                      onChange={(e) => setTaxId(e.target.value)}
+                      placeholder="Enter your tax ID"
+                      className="border-4 border-black"
+                    />
                     <Button onClick={saveAddress} disabled={saving} className="w-full bg-[#ffb347] border-4 border-black text-black font-bold">
-                      {saving ? "SAVING..." : "SAVE ADDRESS"}
+                      {saving ? "SAVING..." : "SAVE PROFILE"}
                     </Button>
                   </div>
                 </div>
