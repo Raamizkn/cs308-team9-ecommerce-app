@@ -51,26 +51,25 @@ Replace `YOUR_SUPABASE_URL` and `YOUR_SUPABASE_ANON_KEY` with your actual Supaba
 
 ### Database Setup
 
-1.  **Create Tables:** Connect to your PostgreSQL database and run the SQL script to create the necessary tables:
-    ```bash
-    psql -h YOUR_DB_HOST -p YOUR_DB_PORT -U YOUR_DB_USER -d YOUR_DB_NAME -f scripts/01-create-tables.sql
-    ```
+Run these SQL scripts **in order** in your Supabase Dashboard → SQL Editor:
+
+1.  **Create Tables:**
+    Run `scripts/01-create-tables.sql` - Creates all database tables
+
 2.  **Seed Categories:**
-    ```bash
-    psql -h YOUR_DB_HOST -p YOUR_DB_PORT -U YOUR_DB_USER -d YOUR_DB_NAME -f scripts/02-seed-categories.sql
-    ```
+    Run `scripts/02-seed-categories.sql` - Adds product categories
+
 3.  **Seed Products:**
-    ```bash
-    psql -h YOUR_DB_HOST -p YOUR_DB_PORT -U YOUR_DB_USER -d YOUR_DB_NAME -f scripts/03-seed-products.sql
-    ```
+    Run `scripts/03-seed-products.sql` - Adds sample products
+
 4.  **Seed Discount Campaigns:**
-    ```bash
-    psql -h YOUR_DB_HOST -p YOUR_DB_PORT -U YOUR_DB_USER -d YOUR_DB_NAME -f scripts/04-seed-discount-campaigns.sql
-    ```
-5.  **Add Stock Functions and Triggers:**
-    ```bash
-    psql -h YOUR_DB_HOST -p YOUR_DB_PORT -U YOUR_DB_USER -d YOUR_DB_NAME -f scripts/05-add-stock-function.sql
-    ```
+    Run `scripts/04-seed-discount-campaigns.sql` - Adds discount codes
+
+5.  **Add Stock Functions:**
+    Run `scripts/05-add-stock-function.sql` - Adds stock management functions
+
+6.  **Setup Login (Profiles Table):**
+    Run `scripts/06-setup-profiles-and-auth.sql` - Creates profiles table and auto-signup trigger
 
 ### Installation
 

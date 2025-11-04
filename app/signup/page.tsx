@@ -68,14 +68,13 @@ export default function SignupPage() {
         return
       }
 
-      // Create user profile in database
+      // Create user profile (email is in auth.users, we just store name)
       if (data.user) {
         await fetch("/api/users", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             id: data.user.id,
-            email: formData.email,
             name: formData.name,
           }),
         })

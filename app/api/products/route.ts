@@ -9,15 +9,16 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get("search")
     const sort = searchParams.get("sort") || "created_at"
 
-    let query = supabase.from("products").select("*, categories(name, slug)")
+    let query = supabase.from("products_belong_to").select("*, categories(name)")
 
     // Filter by category
     if (category) {
-      const { data: categoryData } = await supabase.from("categories").select("id").eq("slug", category).single()
+        const { data: allCategories } = await supabase.from("categories").select("cid, name")
+        const categoryData = allCategories?.find(c => c.name.toLowerCase().replace(/ /g, '-') === category)
 
-      if (categoryData) {
-        query = query.eq("category_id", categoryData.id)
-      }
+        if (categoryData) {
+            query = query.eq("cid", categoryData.cid)
+        }
     }
 
     // Search filter
@@ -30,10 +31,8 @@ export async function GET(request: NextRequest) {
       query = query.order("price", { ascending: true })
     } else if (sort === "price_desc") {
       query = query.order("price", { ascending: false })
-    } else if (sort === "rating") {
-      query = query.order("rating", { ascending: false })
     } else {
-      query = query.order("created_at", { ascending: false })
+      query = query.order("name", { ascending: true })
     }
 
     const { data, error } = await query

@@ -35,18 +35,12 @@ export default function ProfilePage() {
 
       if (authUser) {
         // Get profile from profiles table (not users table)
-        const { data }: any = await supabase.from("profiles").select("*").eq("uid", authUser.id).single()
+        const { data } = await supabase.from("profiles").select("*").eq("uid", authUser.id).single()
         setUser({
           id: authUser.id,
           email: authUser.email,
           name: data?.name || authUser.user_metadata?.name || "User",
-          address: data?.address || data?.home_address || authUser.user_metadata?.address || "Not provided",
-          taxId: data?.tax_id || data?.taxId || "",
         })
-        setAddress(
-          (data?.address as string) || (data?.home_address as string) || (authUser.user_metadata?.address as string) || ""
-        )
-        setTaxId((data?.tax_id as string) || (data?.taxId as string) || "")
       }
     } catch (error) {
       console.error("[Group9] Error fetching user:", error)
@@ -307,3 +301,4 @@ export default function ProfilePage() {
     </div>
   )
 }
+
