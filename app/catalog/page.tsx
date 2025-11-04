@@ -20,9 +20,8 @@ interface Product {
 }
 
 interface Category {
-  id: string
+  cid: string
   name: string
-  slug: string
 }
 
 export default function CatalogPage() {
