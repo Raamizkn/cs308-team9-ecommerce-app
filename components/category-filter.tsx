@@ -3,7 +3,7 @@
 import { Button } from "@/components/ui/button"
 
 interface Category {
-  cid: string
+  cid: number
   name: string
 }
 
