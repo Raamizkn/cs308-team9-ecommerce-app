@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
-import { ShoppingCart, User, Search, Package } from "lucide-react"
+import { ShoppingCart, User, Search, Package, BarChart3 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useCart } from "@/lib/cart-context"
 import { getSupabaseBrowserClient } from "@/lib/supabase/client"
@@ -10,6 +10,7 @@ import { getSupabaseBrowserClient } from "@/lib/supabase/client"
 export function PixelHeader() {
   const { totalItems } = useCart()
   const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [isSalesManager, setIsSalesManager] = useState(false)
 
   useEffect(() => {
     checkAuth()
@@ -21,6 +22,16 @@ export function PixelHeader() {
       data: { user },
     } = await supabase.auth.getUser()
     setIsAuthenticated(!!user)
+
+    // Check if user is a sales manager
+    if (user) {
+      const { data: salesManagerData } = await supabase
+        .from("sales_managers")
+        .select("uid")
+        .eq("uid", user.id)
+        .maybeSingle()
+      setIsSalesManager(!!salesManagerData)
+    }
   }
 
   return (
@@ -59,16 +70,29 @@ export function PixelHeader() {
             >
               <Search className="h-5 w-5" />
             </Button>
-            <Link href={isAuthenticated ? "/profile" : "/login"}>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="text-white hover:bg-[#3d2660] hover:text-[#ffb347] border-2 border-transparent hover:border-black"
-              >
-                <User className="h-5 w-5" />
-              </Button>
-            </Link>
-            {isAuthenticated && (
+            {isSalesManager ? (
+              <Link href="/sales-manager/dashboard">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="text-white hover:bg-[#3d2660] hover:text-[#ffb347] border-2 border-transparent hover:border-black"
+                  title="Sales Manager Dashboard"
+                >
+                  <BarChart3 className="h-5 w-5" />
+                </Button>
+              </Link>
+            ) : (
+              <Link href={isAuthenticated ? "/profile" : "/login"}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="text-white hover:bg-[#3d2660] hover:text-[#ffb347] border-2 border-transparent hover:border-black"
+                >
+                  <User className="h-5 w-5" />
+                </Button>
+              </Link>
+            )}
+            {isAuthenticated && !isSalesManager && (
               <Link href="/orders">
                 <Button
                   variant="ghost"
@@ -79,20 +103,22 @@ export function PixelHeader() {
                 </Button>
               </Link>
             )}
-            <Link href="/cart">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="text-white hover:bg-[#3d2660] hover:text-[#ffb347] border-2 border-transparent hover:border-black relative"
-              >
-                <ShoppingCart className="h-5 w-5" />
-                {totalItems > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-[#ffb347] text-black text-xs w-5 h-5 flex items-center justify-center border-2 border-black font-bold">
-                    {totalItems}
-                  </span>
-                )}
-              </Button>
-            </Link>
+            {!isSalesManager && (
+              <Link href="/cart">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="text-white hover:bg-[#3d2660] hover:text-[#ffb347] border-2 border-transparent hover:border-black relative"
+                >
+                  <ShoppingCart className="h-5 w-5" />
+                  {totalItems > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-[#ffb347] text-black text-xs w-5 h-5 flex items-center justify-center border-2 border-black font-bold">
+                      {totalItems}
+                    </span>
+                  )}
+                </Button>
+              </Link>
+            )}
           </div>
         </div>
       </div>

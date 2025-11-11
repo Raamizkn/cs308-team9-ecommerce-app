@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label"
 import { getSupabaseBrowserClient } from "@/lib/supabase/client"
 import { useToast } from "@/hooks/use-toast"
 
-export default function LoginPage() {
+export default function SalesManagerLoginPage() {
   const router = useRouter()
   const { toast } = useToast()
   const [loading, setLoading] = useState(false)
@@ -27,15 +27,15 @@ export default function LoginPage() {
 
     try {
       const supabase = getSupabaseBrowserClient()
-      const { data: authData, error } = await supabase.auth.signInWithPassword({
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email: formData.email,
         password: formData.password,
       })
 
-      if (error) {
+      if (authError) {
         toast({
           title: "Login failed",
-          description: error.message,
+          description: authError.message,
           variant: "destructive",
         })
         return
@@ -50,55 +50,34 @@ export default function LoginPage() {
         return
       }
 
-      // Check user role and redirect accordingly
+      // Check if user is a sales manager
       // Using .maybeSingle() to avoid errors when user doesn't have that role
-      const { data: salesManager, error: salesManagerError } = await supabase
+      const { data: salesManagerData, error: roleError } = await supabase
         .from("sales_managers")
         .select("uid")
         .eq("uid", authData.user.id)
         .maybeSingle()
 
-      const { data: productManager, error: productManagerError } = await supabase
-        .from("product_managers")
-        .select("uid")
-        .eq("uid", authData.user.id)
-        .maybeSingle()
-
-      const { data: supportAgent, error: supportAgentError } = await supabase
-        .from("support_agents")
-        .select("uid")
-        .eq("uid", authData.user.id)
-        .maybeSingle()
-
-      if (!salesManagerError && salesManager) {
+      if (roleError || !salesManagerData) {
         toast({
-          title: "Welcome back!",
-          description: "You have successfully logged in as Sales Manager",
+          title: "Access denied",
+          description: "This account is not authorized as a sales manager",
+          variant: "destructive",
         })
-        router.push("/sales-manager/dashboard")
-      } else if (!productManagerError && productManager) {
-        toast({
-          title: "Welcome back!",
-          description: "You have successfully logged in",
-        })
-        router.push("/admin")
-      } else if (!supportAgentError && supportAgent) {
-        toast({
-          title: "Welcome back!",
-          description: "You have successfully logged in",
-        })
-        router.push("/admin")
-      } else {
-        toast({
-          title: "Welcome back!",
-          description: "You have successfully logged in",
-        })
-        router.push("/profile")
+        // Sign out the user since they're not a sales manager
+        await supabase.auth.signOut()
+        return
       }
 
+      toast({
+        title: "Welcome back!",
+        description: "You have successfully logged in as Sales Manager",
+      })
+
+      router.push("/sales-manager/dashboard")
       router.refresh()
     } catch (error) {
-      console.error("[Group9] Login error:", error)
+      console.error("[Group9] Sales Manager Login error:", error)
       toast({
         title: "Login failed",
         description: "Something went wrong. Please try again.",
@@ -116,8 +95,10 @@ export default function LoginPage() {
       <main className="container mx-auto px-4 py-12">
         <div className="max-w-md mx-auto">
           <div className="bg-white border-4 border-black p-8 pixel-shadow">
-            <h1 className="font-[family-name:var(--font-pixel)] text-3xl text-[#1a1a3e] mb-2 text-center">LOGIN</h1>
-            <p className="text-center text-[#6c757d] font-semibold mb-8">Welcome back to PixelVault</p>
+            <h1 className="font-[family-name:var(--font-pixel)] text-3xl text-[#1a1a3e] mb-2 text-center">
+              SALES MANAGER LOGIN
+            </h1>
+            <p className="text-center text-[#6c757d] font-semibold mb-8">Access your sales dashboard</p>
 
             <form onSubmit={handleLogin} className="space-y-6">
               <div>
@@ -131,7 +112,7 @@ export default function LoginPage() {
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                   className="border-4 border-black mt-2"
-                  placeholder="your@email.com"
+                  placeholder="sales@example.com"
                 />
               </div>
 
@@ -146,14 +127,14 @@ export default function LoginPage() {
                   value={formData.password}
                   onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                   className="border-4 border-black mt-2"
-                  placeholder="••••••••"
+                  placeholder="????????"
                 />
               </div>
 
               <Button
                 type="submit"
                 disabled={loading}
-                className="w-full bg-[#ffb347] hover:bg-[#ffd93d] text-black border-4 border-black font-bold text-lg py-6 pixel-shadow"
+                className="w-full bg-[#4ecdc4] hover:bg-[#3db8b0] text-black border-4 border-black font-bold text-lg py-6 pixel-shadow"
               >
                 {loading ? "LOGGING IN..." : "LOGIN"}
               </Button>
@@ -161,9 +142,8 @@ export default function LoginPage() {
 
             <div className="mt-6 text-center">
               <p className="text-[#6c757d] font-semibold">
-                Don't have an account?{" "}
-                <Link href="/signup" className="text-[#5b3a8f] font-bold hover:text-[#3d2660]">
-                  Sign up
+                <Link href="/" className="text-[#5b3a8f] font-bold hover:text-[#3d2660]">
+                  Back to Store
                 </Link>
               </p>
             </div>
