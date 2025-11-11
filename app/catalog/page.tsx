@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { PixelHeader } from "@/components/pixel-header"
 import { CategoryFilter } from "@/components/category-filter"
 import { ProductCard } from "@/components/product-card"
 import { SearchBar } from "@/components/search-bar"
@@ -89,8 +90,9 @@ export default function CatalogPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#e8f4f8]">
-      <div className="container mx-auto px-4 py-8">
+    <div className="min-h-screen bg-[#e8f4f8]">
+      <PixelHeader />
+      <main className="container mx-auto px-4 py-8">
         {/* Page Title */}
         <div className="mb-8 text-center">
           <h1 className="font-[family-name:var(--font-pixel)] text-4xl md:text-5xl text-[#2c3e50] mb-4 pixel-shadow">
@@ -144,7 +146,7 @@ export default function CatalogPage() {
             ))}
           </div>
         )}
-      </div>
-    </main>
+      </main>
+    </div>
   )
 }

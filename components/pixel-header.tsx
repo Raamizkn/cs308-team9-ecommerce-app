@@ -11,6 +11,7 @@ export function PixelHeader() {
   const { totalItems } = useCart()
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [isSalesManager, setIsSalesManager] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
     checkAuth()
@@ -21,17 +22,21 @@ export function PixelHeader() {
     const {
       data: { user },
     } = await supabase.auth.getUser()
-    setIsAuthenticated(!!user)
-
-    // Check if user is a sales manager
+    
     if (user) {
+      setIsAuthenticated(true)
+      // Check if user is a sales manager
       const { data: salesManagerData } = await supabase
         .from("sales_managers")
         .select("uid")
         .eq("uid", user.id)
         .maybeSingle()
       setIsSalesManager(!!salesManagerData)
+    } else {
+      setIsAuthenticated(false)
+      setIsSalesManager(false)
     }
+    setIsLoading(false)
   }
 
   return (
@@ -70,7 +75,7 @@ export function PixelHeader() {
             >
               <Search className="h-5 w-5" />
             </Button>
-            {isSalesManager ? (
+            {!isLoading && isSalesManager ? (
               <Link href="/sales-manager/dashboard">
                 <Button
                   variant="ghost"
@@ -81,7 +86,7 @@ export function PixelHeader() {
                   <BarChart3 className="h-5 w-5" />
                 </Button>
               </Link>
-            ) : (
+            ) : !isLoading ? (
               <Link href={isAuthenticated ? "/profile" : "/login"}>
                 <Button
                   variant="ghost"
@@ -91,8 +96,8 @@ export function PixelHeader() {
                   <User className="h-5 w-5" />
                 </Button>
               </Link>
-            )}
-            {isAuthenticated && !isSalesManager && (
+            ) : null}
+            {!isLoading && isAuthenticated && !isSalesManager && (
               <Link href="/orders">
                 <Button
                   variant="ghost"
@@ -103,7 +108,7 @@ export function PixelHeader() {
                 </Button>
               </Link>
             )}
-            {!isSalesManager && (
+            {!isLoading && !isSalesManager && (
               <Link href="/cart">
                 <Button
                   variant="ghost"

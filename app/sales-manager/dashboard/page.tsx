@@ -14,11 +14,14 @@ import {
   BarChart3,
   Package,
   ArrowLeft,
+  LogOut,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { useToast } from "@/hooks/use-toast"
 
 export default function SalesManagerDashboard() {
   const router = useRouter()
+  const { toast } = useToast()
   const [user, setUser] = useState<any>(null)
   const [loading, setLoading] = useState(true)
 
@@ -34,7 +37,7 @@ export default function SalesManagerDashboard() {
       } = await supabase.auth.getUser()
 
       if (!authUser) {
-        router.push("/sales-manager/login")
+        router.push("/login")
         return
       }
 
@@ -47,7 +50,7 @@ export default function SalesManagerDashboard() {
         .maybeSingle()
 
       if (roleError || !salesManagerData) {
-        router.push("/sales-manager/login")
+        router.push("/login")
         return
       }
 
@@ -64,9 +67,40 @@ export default function SalesManagerDashboard() {
       })
     } catch (error) {
       console.error("[Group9] Error checking sales manager access:", error)
-      router.push("/sales-manager/login")
+      router.push("/login")
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleLogout = async () => {
+    try {
+      const supabase = getSupabaseBrowserClient()
+      const { error } = await supabase.auth.signOut()
+
+      if (error) {
+        toast({
+          title: "Logout failed",
+          description: error.message,
+          variant: "destructive",
+        })
+        return
+      }
+
+      toast({
+        title: "Logged out",
+        description: "You have been successfully logged out",
+      })
+
+      router.push("/login")
+      router.refresh()
+    } catch (error) {
+      console.error("[Group9] Logout error:", error)
+      toast({
+        title: "Logout failed",
+        description: "Something went wrong. Please try again.",
+        variant: "destructive",
+      })
     }
   }
 
@@ -96,12 +130,21 @@ export default function SalesManagerDashboard() {
                 Welcome back, {user?.name || "Sales Manager"}
               </p>
             </div>
-            <Link href="/">
-              <Button className="bg-white border-4 border-black text-black hover:bg-[#e9ecef] font-bold">
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Back to Store
+            <div className="flex items-center gap-3">
+              <Button
+                onClick={handleLogout}
+                className="bg-white border-4 border-black text-black hover:bg-[#e9ecef] font-bold"
+              >
+                <LogOut className="h-4 w-4 mr-2" />
+                LOGOUT
               </Button>
-            </Link>
+              <Link href="/">
+                <Button className="bg-white border-4 border-black text-black hover:bg-[#e9ecef] font-bold">
+                  <ArrowLeft className="h-4 w-4 mr-2" />
+                  Back to Store
+                </Button>
+              </Link>
+            </div>
           </div>
         </div>
 
