@@ -35,7 +35,7 @@ CREATE TABLE public.products_belong_to (
   stock_quantity INT NOT NULL CHECK (stock_quantity >= 0),
   warranty_status TEXT,
   distributor_info TEXT,
-  product_cost NUMERIC(10, 2) NOT NULL CHECK (product_cost >= 0),
+  product_cost NUMERIC(10, 2) CHECK (product_cost IS NULL OR product_cost >= 0),
   cid INT NOT NULL,
   FOREIGN KEY (cid) REFERENCES public.categories(cid)
     ON DELETE RESTRICT
