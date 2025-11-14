@@ -28,6 +28,7 @@ export default function OrderDetailPage() {
   const [loading, setLoading] = useState(true)
   const [refundReason, setRefundReason] = useState("")
   const [refundDialogOpen, setRefundDialogOpen] = useState(false)
+  const [isCancelling, setIsCancelling] = useState(false)
 
   useEffect(() => {
     fetchOrderDetails()
@@ -103,6 +104,31 @@ export default function OrderDetailPage() {
         description: "Something went wrong. Please try again.",
         variant: "destructive",
       })
+    }
+  }
+
+  const handleCancelOrder = async () => {
+    try {
+      setIsCancelling(true)
+      const response = await fetch("/api/orders", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "cancel", order_id: order.id }),
+      })
+
+      const data = await response.json()
+      if (data.error) {
+        toast({ title: "Cannot cancel", description: data.error, variant: "destructive" })
+        return
+      }
+
+      toast({ title: "Order cancelled", description: "Your order was cancelled successfully" })
+      await fetchOrderDetails()
+    } catch (error) {
+      console.error("[Group9] Error cancelling order:", error)
+      toast({ title: "Cancel failed", description: "Something went wrong.", variant: "destructive" })
+    } finally {
+      setIsCancelling(false)
     }
   }
 
@@ -329,7 +355,7 @@ export default function OrderDetailPage() {
                   DOWNLOAD INVOICE
                 </Button>
 
-                {order.status !== "cancelled" && order.status !== "delivered" && (
+                {order.status === "delivered" && (
                   <Dialog open={refundDialogOpen} onOpenChange={setRefundDialogOpen}>
                     <DialogTrigger asChild>
                       <Button className="w-full bg-white text-[#dc3545] border-4 border-black font-bold hover:bg-[#dc3545] hover:text-white">
@@ -365,6 +391,16 @@ export default function OrderDetailPage() {
                       </div>
                     </DialogContent>
                   </Dialog>
+                )}
+
+                {order.status === "processing" && (
+                  <Button
+                    onClick={handleCancelOrder}
+                    disabled={isCancelling}
+                    className="w-full bg-white text-[#1a1a3e] border-4 border-black font-bold hover:bg-[#e9ecef]"
+                  >
+                    {isCancelling ? "CANCELLING..." : "CANCEL ORDER"}
+                  </Button>
                 )}
               </div>
             </div>

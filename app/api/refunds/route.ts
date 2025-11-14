@@ -19,6 +19,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Order not found" }, { status: 404 })
     }
 
+    // Only allow refunds for delivered orders
+    if (order.status !== "delivered") {
+      return NextResponse.json({ error: "Refunds are allowed only for delivered orders" }, { status: 400 })
+    }
+
     // Check if refund request already exists
     const { data: existingRefund } = await supabase
       .from("refund_requests")
