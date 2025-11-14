@@ -22,3 +22,14 @@ CREATE POLICY "PM Full Access"
   ON public.products_belong_to FOR ALL
   USING ( is_product_manager() )
   WITH CHECK ( is_product_manager() );
+
+-- Allow sales managers to select on products table
+CREATE POLICY "SM Select Access"
+  ON public.products_belong_to FOR SELECT
+  USING ( is_sales_manager() );
+
+-- ALow sales managers to update rows in products table
+CREATE POLICY "SM Update Access"
+  ON public.products_belong_to FOR UPDATE
+  USING ( is_sales_manager() )
+  WITH CHECK ( is_sales_manager() );
