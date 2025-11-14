@@ -9,3 +9,5 @@ CREATE POLICY "Allow Product Managers to manage products"
   ON public.products_belong_to FOR ALL
   USING (is_product_manager())
   WITH CHECK (is_product_manager());
+
+
