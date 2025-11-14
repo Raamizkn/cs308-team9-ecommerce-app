@@ -10,4 +10,8 @@ CREATE POLICY "Allow Product Managers to manage products"
   USING (is_product_manager())
   WITH CHECK (is_product_manager());
 
-
+-- Only sales manager can manage disccount campaigns
+CREATE POLICY "Allow Sales Managers to manage discount campaigns"
+  ON public.discount_campaigns FOR ALL
+  USING (is_sales_manager())
+  WITH CHECK (is_sales_manager());
