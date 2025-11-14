@@ -15,3 +15,10 @@ CREATE POLICY "Allow Sales Managers to manage discount campaigns"
   ON public.discount_campaigns FOR ALL
   USING (is_sales_manager())
   WITH CHECK (is_sales_manager());
+
+
+ALTER TABLE public.applies_to ENABLE ROW LEVEL SECURITY;
+-- Anyone can see which products have discounts
+CREATE POLICY "Allow public read access to discount mappings"
+  ON public.applies_to FOR SELECT
+  USING (true);
