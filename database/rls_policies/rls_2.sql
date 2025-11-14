@@ -4,7 +4,6 @@ CREATE POLICY "Allow Product Managers to manage categories"
   USING (is_product_manager())
   WITH CHECK (is_product_manager());
 
-
 -- Only sales manager can manage disccount campaigns
 CREATE POLICY "Allow Sales Managers to manage discount campaigns"
   ON public.discount_campaigns FOR ALL
@@ -33,3 +32,9 @@ CREATE POLICY "SM Update Access"
   ON public.products_belong_to FOR UPDATE
   USING ( is_sales_manager() )
   WITH CHECK ( is_sales_manager() );
+
+-- Only Sales Managers can map discounts to products 
+CREATE POLICY "Allow Sales Managers to manage discount mappings"
+  ON public.applies_to FOR ALL
+  USING (is_sales_manager())
+  WITH CHECK (is_sales_manager());
