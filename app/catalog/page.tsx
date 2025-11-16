@@ -9,7 +9,8 @@ import { Button } from "@/components/ui/button"
 import { ArrowUpDown } from "lucide-react"
 
 interface Product {
-  id: string
+  pid: number
+  id: string // Added during transformation
   name: string
   description: string
   price: number
@@ -17,7 +18,8 @@ interface Product {
   rating: number
   review_count: number
   is_limited_edition: boolean
-  stock: number
+  stock_quantity: number
+  stock: number // Added during transformation
 }
 
 interface Category {
@@ -61,7 +63,19 @@ export default function CatalogPage() {
 
       const response = await fetch(`/api/products?${params}`)
       const data = await response.json()
-      setProducts(data.products || [])
+      
+      // Transform products to match component expectations
+      const transformedProducts = (data.products || []).map((product: any) => ({
+        ...product,
+        id: String(product.pid), // Convert pid to string for key prop
+        image_url: product.image_url || "/placeholder.svg",
+        rating: product.rating || 0,
+        review_count: product.review_count || 0,
+        is_limited_edition: product.is_limited_edition || false,
+        stock: product.stock_quantity || 0,
+      }))
+      
+      setProducts(transformedProducts)
     } catch (error) {
       console.error("Error fetching products:", error)
     } finally {

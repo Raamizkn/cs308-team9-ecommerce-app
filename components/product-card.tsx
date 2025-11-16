@@ -1,4 +1,5 @@
 import Image from "next/image"
+import Link from "next/link"
 import { Star } from "lucide-react"
 import { AddToCartButton } from "./add-to-cart-button" // Import the client component
 
@@ -27,24 +28,30 @@ export function ProductCard({
 }: ProductCardProps) {
   return (
     <div className="bg-[#4ecdc4] border-4 border-black pixel-shadow hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all">
-      {/* Image Container */}
-      <div className="relative aspect-square bg-[#2a9d8f] border-b-4 border-black overflow-hidden">
-        <Image src={image_url || "/placeholder.svg"} alt={name} fill className="object-cover" />
-        {is_limited_edition && (
-          <div className="absolute top-2 right-2 bg-[#ff6b9d] border-2 border-black px-2 py-1">
-            <span className="text-[10px] font-bold text-white">LIMITED</span>
-          </div>
-        )}
-        {stock < 20 && stock > 0 && (
-          <div className="absolute top-2 left-2 bg-[#ffb347] border-2 border-black px-2 py-1">
-            <span className="text-[10px] font-bold text-black">LOW STOCK</span>
-          </div>
-        )}
-      </div>
+      {/* Image Container - Clickable */}
+      <Link href={`/products/${id}`}>
+        <div className="relative aspect-square bg-[#2a9d8f] border-b-4 border-black overflow-hidden cursor-pointer">
+          <Image src={image_url || "/placeholder.svg"} alt={name} fill className="object-cover" />
+          {is_limited_edition && (
+            <div className="absolute top-2 right-2 bg-[#ff6b9d] border-2 border-black px-2 py-1">
+              <span className="text-[10px] font-bold text-white">LIMITED</span>
+            </div>
+          )}
+          {stock < 20 && stock > 0 && (
+            <div className="absolute top-2 left-2 bg-[#ffb347] border-2 border-black px-2 py-1">
+              <span className="text-[10px] font-bold text-black">LOW STOCK</span>
+            </div>
+          )}
+        </div>
+      </Link>
 
       {/* Content */}
       <div className="p-4 space-y-3">
-        <h3 className="font-bold text-lg leading-tight line-clamp-2 text-[#1a1a3e]">{name}</h3>
+        <Link href={`/products/${id}`}>
+          <h3 className="font-bold text-lg leading-tight line-clamp-2 text-[#1a1a3e] cursor-pointer hover:text-[#5b3a8f] transition-colors">
+            {name}
+          </h3>
+        </Link>
 
         <p className="text-sm text-[#0d0d1a] line-clamp-2 leading-relaxed">{description}</p>
 
