@@ -42,7 +42,14 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    return NextResponse.json({ products: data })
+    // Map database fields to frontend expected fields
+    const products = data?.map(product => ({
+      ...product,
+      id: product.pid,
+      stock: product.stock_quantity
+    }))
+
+    return NextResponse.json({ products })
   } catch (error) {
     console.error("[Group9] Unexpected error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
