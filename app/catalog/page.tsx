@@ -23,7 +23,7 @@ interface Product {
 }
 
 interface Category {
-  cid: string
+  cid: number
   name: string
 }
 
