@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { PixelHeader } from "@/components/pixel-header"
 import { CategoryFilter } from "@/components/category-filter"
 import { ProductCard } from "@/components/product-card"
 import { SearchBar } from "@/components/search-bar"
@@ -8,7 +9,8 @@ import { Button } from "@/components/ui/button"
 import { ArrowUpDown } from "lucide-react"
 
 interface Product {
-  id: string
+  pid: number
+  id: string // Added during transformation
   name: string
   description: string
   price: number
@@ -16,11 +18,12 @@ interface Product {
   rating: number
   review_count: number
   is_limited_edition: boolean
-  stock: number
+  stock_quantity: number
+  stock: number // Added during transformation
 }
 
 interface Category {
-  cid: string
+  cid: number
   name: string
 }
 
@@ -60,7 +63,19 @@ export default function CatalogPage() {
 
       const response = await fetch(`/api/products?${params}`)
       const data = await response.json()
-      setProducts(data.products || [])
+      
+      // Transform products to match component expectations
+      const transformedProducts = (data.products || []).map((product: any) => ({
+        ...product,
+        id: String(product.pid), // Convert pid to string for key prop
+        image_url: product.image_url || "/placeholder.svg",
+        rating: product.rating || 0,
+        review_count: product.review_count || 0,
+        is_limited_edition: product.is_limited_edition || false,
+        stock: product.stock_quantity || 0,
+      }))
+      
+      setProducts(transformedProducts)
     } catch (error) {
       console.error("Error fetching products:", error)
     } finally {
@@ -89,8 +104,9 @@ export default function CatalogPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#e8f4f8]">
-      <div className="container mx-auto px-4 py-8">
+    <div className="min-h-screen bg-[#e8f4f8]">
+      <PixelHeader />
+      <main className="container mx-auto px-4 py-8">
         {/* Page Title */}
         <div className="mb-8 text-center">
           <h1 className="font-[family-name:var(--font-pixel)] text-4xl md:text-5xl text-[#2c3e50] mb-4 pixel-shadow">
@@ -144,7 +160,7 @@ export default function CatalogPage() {
             ))}
           </div>
         )}
-      </div>
-    </main>
+      </main>
+    </div>
   )
 }
