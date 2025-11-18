@@ -38,3 +38,11 @@ CREATE POLICY "Allow Sales Managers to manage discount mappings"
   ON public.applies_to FOR ALL
   USING (is_sales_manager())
   WITH CHECK (is_sales_manager());
+
+
+-- users can only insert, update, see, delete their own wish_list
+ALTER TABLE public.wish_for ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users can manage their own wish list"
+    ON public.wish_for FOR ALL
+    USING (uid = auth.uid()) -- Applies to SELECT, UPDATE, DELETE
+    WITH CHECK (uid = auth.uid()); -- Applies to INSERT, UPDATE
