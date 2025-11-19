@@ -28,6 +28,7 @@ export default function OrderDetailPage() {
   const [loading, setLoading] = useState(true)
   const [refundReason, setRefundReason] = useState("")
   const [refundDialogOpen, setRefundDialogOpen] = useState(false)
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false)
   const [isCancelling, setIsCancelling] = useState(false)
 
   useEffect(() => {
@@ -110,10 +111,20 @@ export default function OrderDetailPage() {
   const handleCancelOrder = async () => {
     try {
       setIsCancelling(true)
+      
+      const supabase = getSupabaseBrowserClient()
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+
       const response = await fetch("/api/orders", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "cancel", order_id: order.id }),
+        body: JSON.stringify({ 
+          action: "cancel", 
+          order_id: order.id,
+          user_id: user?.id 
+        }),
       })
 
       const data = await response.json()
@@ -122,7 +133,16 @@ export default function OrderDetailPage() {
         return
       }
 
-      toast({ title: "Order cancelled", description: "Your order was cancelled successfully" })
+      // Show success message with stock restoration info
+      const description = data.stock_restored 
+        ? "Your order was cancelled successfully and product stock has been restored."
+        : "Your order was cancelled successfully."
+      
+      toast({ 
+        title: "Order cancelled", 
+        description,
+      })
+      
       await fetchOrderDetails()
     } catch (error) {
       console.error("[Group9] Error cancelling order:", error)
@@ -393,14 +413,51 @@ export default function OrderDetailPage() {
                   </Dialog>
                 )}
 
-                {order.status === "processing" && (
-                  <Button
-                    onClick={handleCancelOrder}
-                    disabled={isCancelling}
-                    className="w-full bg-white text-[#1a1a3e] border-4 border-black font-bold hover:bg-[#e9ecef]"
-                  >
-                    {isCancelling ? "CANCELLING..." : "CANCEL ORDER"}
-                  </Button>
+                {(order.status === "pending" || order.status === "processing") && (
+                  <Dialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
+                    <DialogTrigger asChild>
+                      <Button className="w-full bg-white text-[#dc3545] border-4 border-black font-bold hover:bg-[#dc3545] hover:text-white">
+                        CANCEL ORDER
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="bg-white border-4 border-black max-w-md">
+                      <DialogHeader>
+                        <DialogTitle className="font-bold text-2xl text-[#1a1a3e]">Cancel Order?</DialogTitle>
+                        <DialogDescription className="text-[#6c757d]">
+                          Are you sure you want to cancel this order? This action cannot be undone, but your payment
+                          will be refunded.
+                        </DialogDescription>
+                      </DialogHeader>
+                      <div className="space-y-4">
+                        <div className="bg-[#fff3cd] border-4 border-black p-4">
+                          <p className="text-sm font-bold text-[#856404]">⚠️ CANCELLATION DETAILS:</p>
+                          <ul className="text-sm text-[#856404] mt-2 space-y-1 list-disc list-inside">
+                            <li>Order will be immediately cancelled</li>
+                            <li>Product stock will be restored</li>
+                            <li>Refund will be processed within 5-7 business days</li>
+                          </ul>
+                        </div>
+                        <div className="flex gap-3">
+                          <Button
+                            onClick={() => setCancelDialogOpen(false)}
+                            className="flex-1 bg-white text-[#1a1a3e] border-4 border-black font-bold hover:bg-[#e9ecef]"
+                          >
+                            KEEP ORDER
+                          </Button>
+                          <Button
+                            onClick={() => {
+                              handleCancelOrder()
+                              setCancelDialogOpen(false)
+                            }}
+                            disabled={isCancelling}
+                            className="flex-1 bg-[#dc3545] hover:bg-[#c82333] text-white border-4 border-black font-bold"
+                          >
+                            {isCancelling ? "CANCELLING..." : "YES, CANCEL"}
+                          </Button>
+                        </div>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
                 )}
               </div>
             </div>
