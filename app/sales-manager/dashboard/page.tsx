@@ -150,50 +150,50 @@ export default function SalesManagerDashboard() {
 
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
           <Link href="/sales-manager/pricing">
-            <div className="bg-[#4ecdc4] border-4 border-black p-8 pixel-shadow hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all cursor-pointer">
+            <div className="bg-[#4ecdc4] border-4 border-black p-8 pixel-shadow hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all cursor-pointer h-full flex flex-col">
               <DollarSign className="h-12 w-12 text-[#1a1a3e] mb-4" />
               <h2 className="font-bold text-2xl text-[#1a1a3e] mb-2">PRICING MANAGEMENT</h2>
-              <p className="text-[#0d0d1a]">Set product prices and manage pricing strategies</p>
+              <p className="text-[#0d0d1a] flex-grow">Set product prices and manage pricing strategies</p>
             </div>
           </Link>
 
           <Link href="/sales-manager/discounts">
-            <div className="bg-[#ffb347] border-4 border-black p-8 pixel-shadow hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all cursor-pointer">
+            <div className="bg-[#ffb347] border-4 border-black p-8 pixel-shadow hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all cursor-pointer h-full flex flex-col">
               <Percent className="h-12 w-12 text-[#1a1a3e] mb-4" />
               <h2 className="font-bold text-2xl text-[#1a1a3e] mb-2">DISCOUNT CAMPAIGNS</h2>
-              <p className="text-[#0d0d1a]">Create and manage discount campaigns</p>
+              <p className="text-[#0d0d1a] flex-grow">Create and manage discount campaigns</p>
             </div>
           </Link>
 
           <Link href="/sales-manager/invoices">
-            <div className="bg-[#5b3a8f] border-4 border-black p-8 pixel-shadow hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all cursor-pointer">
+            <div className="bg-[#5b3a8f] border-4 border-black p-8 pixel-shadow hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all cursor-pointer h-full flex flex-col">
               <FileText className="h-12 w-12 text-white mb-4" />
               <h2 className="font-bold text-2xl text-white mb-2">INVOICES</h2>
-              <p className="text-white">View, print, and export invoices by date range</p>
+              <p className="text-white flex-grow">View, print, and export invoices by date range</p>
             </div>
           </Link>
 
           <Link href="/sales-manager/revenue">
-            <div className="bg-[#6bcf7f] border-4 border-black p-8 pixel-shadow hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all cursor-pointer">
+            <div className="bg-[#6bcf7f] border-4 border-black p-8 pixel-shadow hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all cursor-pointer h-full flex flex-col">
               <BarChart3 className="h-12 w-12 text-[#1a1a3e] mb-4" />
               <h2 className="font-bold text-2xl text-[#1a1a3e] mb-2">REVENUE & PROFIT</h2>
-              <p className="text-[#0d0d1a]">Calculate revenue and profit/loss with charts</p>
+              <p className="text-[#0d0d1a] flex-grow">Calculate revenue and profit/loss with charts</p>
             </div>
           </Link>
 
           <Link href="/sales-manager/orders">
-            <div className="bg-[#ff6b9d] border-4 border-black p-8 pixel-shadow hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all cursor-pointer">
+            <div className="bg-[#ff6b9d] border-4 border-black p-8 pixel-shadow hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all cursor-pointer h-full flex flex-col">
               <ShoppingBag className="h-12 w-12 text-white mb-4" />
               <h2 className="font-bold text-2xl text-white mb-2">ORDER OVERVIEW</h2>
-              <p className="text-white">View all orders and order details</p>
+              <p className="text-white flex-grow">View all orders and order details</p>
             </div>
           </Link>
 
           <Link href="/sales-manager/refunds">
-            <div className="bg-[#9b59b6] border-4 border-black p-8 pixel-shadow hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all cursor-pointer">
+            <div className="bg-[#9b59b6] border-4 border-black p-8 pixel-shadow hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all cursor-pointer h-full flex flex-col">
               <TrendingUp className="h-12 w-12 text-white mb-4" />
               <h2 className="font-bold text-2xl text-white mb-2">REFUND REQUESTS</h2>
-              <p className="text-white">Evaluate and process refund requests</p>
+              <p className="text-white flex-grow">Evaluate and process refund requests</p>
             </div>
           </Link>
         </div>
