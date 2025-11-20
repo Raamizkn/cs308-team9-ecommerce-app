@@ -59,13 +59,30 @@ export default function ProfilePage() {
       } = await supabase.auth.getUser()
 
       if (authUser) {
-        // Get profile from profiles table (not users table)
-        const { data } = await supabase.from("profiles").select("*").eq("uid", authUser.id).single()
+        // Get profile from profiles table
+        const { data: profileData } = await supabase.from("profiles").select("*").eq("uid", authUser.id).single()
+        
+        // Get customer data if user is already a customer
+        const { data: customerData } = await supabase
+          .from("customers")
+          .select("home_address, tax_id")
+          .eq("uid", authUser.id)
+          .maybeSingle()
+
         setUser({
           id: authUser.id,
           email: authUser.email,
-          name: data?.name || authUser.user_metadata?.name || "User",
+          name: (profileData as { name?: string | null } | null)?.name || authUser.user_metadata?.name || "User",
         })
+
+        // Set address and tax_id if customer data exists
+        if (customerData) {
+          const customer = customerData as { home_address?: string; tax_id?: string } | null
+          if (customer) {
+            setAddress(customer.home_address || "")
+            setTaxId(customer.tax_id || "")
+          }
+        }
       }
     } catch (error) {
       console.error("[Group9] Error fetching user:", error)
@@ -142,28 +159,50 @@ export default function ProfilePage() {
         data: { user: authUser },
       } = await supabase.auth.getUser()
 
-      if (!authUser) return
+      if (!authUser) {
+        toast({ title: "Save failed", description: "You must be logged in to save your profile.", variant: "destructive" })
+        return
+      }
 
-      const { error } = await (supabase.from("profiles" as any) as any).upsert(
+      // Validate required fields
+      if (!address.trim()) {
+        toast({ title: "Save failed", description: "Please enter your home address.", variant: "destructive" })
+        return
+      }
+
+      if (!taxId.trim()) {
+        toast({ title: "Save failed", description: "Please enter your tax ID.", variant: "destructive" })
+        return
+      }
+
+      // Insert or update customer record
+      const { error: customerError } = await (supabase.from("customers" as any) as any).upsert(
         [
           {
             uid: authUser.id,
-            address,
-            tax_id: taxId,
-            name: user?.name || authUser.user_metadata?.name || "User",
+            home_address: address.trim(),
+            tax_id: taxId.trim(),
           },
         ] as any,
         { onConflict: "uid" }
       )
 
-      if (error) {
-        toast({ title: "Save failed", description: error.message, variant: "destructive" })
+      if (customerError) {
+        console.error("[Group9] Error saving customer:", customerError)
+        toast({ 
+          title: "Save failed", 
+          description: customerError.message || "Failed to save customer information.", 
+          variant: "destructive" 
+        })
         return
       }
 
-      setUser({ ...user, address: address || "Not provided", taxId: taxId || "" })
-      toast({ title: "Profile saved", description: "Your profile information has been updated." })
+      toast({ 
+        title: "Profile saved", 
+        description: "Your customer information has been saved. You are now registered as a customer." 
+      })
     } catch (e) {
+      console.error("[Group9] Error in saveAddress:", e)
       toast({ title: "Save failed", description: "Something went wrong.", variant: "destructive" })
     } finally {
       setSaving(false)
