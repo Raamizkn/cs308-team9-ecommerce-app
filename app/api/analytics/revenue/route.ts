@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-
-import { getSupabaseServerClient } from "@/lib/supabase/server"
+import { createClient } from "@supabase/supabase-js"
 
 const ALLOWED_BUCKETS = new Set(["day", "week", "month"])
 
@@ -21,8 +20,6 @@ function validateDate(value: string | null, label: string): string | null {
 }
 
 export async function GET(request: NextRequest) {
-  const supabase = getSupabaseServerClient()
-
   try {
     const accessToken = parseBearerToken(request.headers.get("authorization"))
 
@@ -30,35 +27,69 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
+    // Create Supabase client for auth verification
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    )
+
+    // Verify the access token and get user
     const { data: authData, error: authError } = await supabase.auth.getUser(accessToken)
 
     if (authError || !authData?.user) {
-      return NextResponse.json({ error: "Invalid session" }, { status: 401 })
-    }
-
-    const { data: setSessionData, error: setSessionError } = await supabase.auth.setSession({
-      access_token: accessToken,
-      refresh_token: "",
-    })
-
-    if (setSessionError || !setSessionData?.session) {
-      return NextResponse.json({ error: "Failed to establish session" }, { status: 401 })
+      return NextResponse.json({ error: "Invalid or expired token" }, { status: 401 })
     }
 
     const user = authData.user
 
-    const { data: profile, error: profileError } = await supabase
-      .from("users")
-      .select("role")
-      .eq("id", user.id)
-      .single()
+    // Create an authenticated client for RLS-protected queries
+    // Use service role key if available, otherwise use anon key with user context
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+    const queryClient = serviceRoleKey
+      ? createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, serviceRoleKey)
+      : createClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+          {
+            global: {
+              headers: {
+                Authorization: `Bearer ${accessToken}`,
+              },
+            },
+          }
+        )
 
-    if (profileError || !profile) {
-      return NextResponse.json({ error: "Profile not found" }, { status: 403 })
+    // Check if user is a sales manager
+    const { data: salesManagerData, error: salesManagerError } = await queryClient
+      .from("sales_managers")
+      .select("uid")
+      .eq("uid", user.id)
+      .maybeSingle()
+
+    if (salesManagerError) {
+      console.error("[Analytics] Sales manager check error:", salesManagerError)
+      console.error("[Analytics] User ID:", user.id)
+      // If using service role, this shouldn't fail. If using anon key, RLS might block it.
+      // For now, let's be more lenient and check if the error is RLS-related
+      if (salesManagerError.message?.includes("permission") || salesManagerError.message?.includes("policy")) {
+        // RLS is blocking - this means either user is not a sales manager OR RLS is misconfigured
+        // Since we can't verify, we'll deny access
+        return NextResponse.json({ 
+          error: "Forbidden: Sales manager access required", 
+          details: "Unable to verify sales manager status. Please ensure you are registered as a sales manager."
+        }, { status: 403 })
+      }
+      return NextResponse.json({ 
+        error: "Forbidden: Sales manager access required", 
+        details: salesManagerError.message 
+      }, { status: 403 })
     }
 
-    if (profile.role !== "sales_manager") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+    if (!salesManagerData) {
+      return NextResponse.json({ 
+        error: "Forbidden: Sales manager access required. User is not registered as a sales manager.",
+        userId: user.id
+      }, { status: 403 })
     }
 
     const searchParams = request.nextUrl.searchParams
@@ -85,7 +116,7 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       console.error("[Analytics] get_revenue_profit error:", error)
-      return NextResponse.json({ error: "Failed to compute analytics" }, { status: 500 })
+      return NextResponse.json({ error: "Failed to compute analytics", details: error.message }, { status: 500 })
     }
 
     type RpcRow = {
@@ -97,23 +128,47 @@ export async function GET(request: NextRequest) {
 
     type Totals = { totalRevenue: number; totalCost: number; totalProfit: number }
 
-    const points: RpcRow[] = (data || []) as RpcRow[]
+    type RevenueDataPoint = {
+      bucket: string
+      revenue: number
+      cost: number
+      profit: number
+    }
 
-    const totals = points.reduce<Totals>(
+    const rawPoints: RpcRow[] = (data || []) as RpcRow[]
+
+    // Convert all values to numbers and ensure type safety
+    const points: RevenueDataPoint[] = rawPoints.map((row) => ({
+      bucket: String(row.bucket),
+      revenue: Number(row.revenue ?? 0),
+      cost: Number(row.cost ?? 0),
+      profit: Number(row.profit ?? 0),
+    }))
+
+    // Calculate totals - explicitly typed as numbers
+    const totals: Totals = points.reduce<Totals>(
       (acc, row) => {
-        acc.totalRevenue += Number(row.revenue ?? 0)
-        acc.totalCost += Number(row.cost ?? 0)
-        acc.totalProfit += Number(row.profit ?? 0)
+        acc.totalRevenue += row.revenue
+        acc.totalCost += row.cost
+        acc.totalProfit += row.profit
         return acc
       },
       { totalRevenue: 0, totalCost: 0, totalProfit: 0 },
     )
 
+    // Ensure totals are properly typed numbers
+    // Round to 2 decimal places for currency precision
+    const typedTotals: Totals = {
+      totalRevenue: Math.round(totals.totalRevenue * 100) / 100,
+      totalCost: Math.round(totals.totalCost * 100) / 100,
+      totalProfit: Math.round(totals.totalProfit * 100) / 100,
+    }
+
     return NextResponse.json({
       bucket,
       start,
       end,
-      totals,
+      totals: typedTotals,
       points,
     })
   } catch (error) {
