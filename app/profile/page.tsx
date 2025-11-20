@@ -60,7 +60,7 @@ export default function ProfilePage() {
 
       if (authUser) {
         // Get profile from profiles table (not users table)
-        const { data } = await supabase.from("profiles").select("*").eq("uid", authUser.id).single()
+        const { data }: any = await supabase.from("profiles").select("*").eq("uid", authUser.id).single()
         setUser({
           id: authUser.id,
           email: authUser.email,
@@ -81,17 +81,78 @@ export default function ProfilePage() {
         data: { user },
       } = await supabase.auth.getUser()
 
-      if (user) {
-        const { data } = await supabase
-          .from("wishlist")
-          .select("*, products(*)")
-          .eq("user_id", user.id)
-          .order("created_at", { ascending: false })
-
-        setWishlist(data || [])
+      if (!user) {
+        setWishlist([])
+        return
       }
+
+      // Fetch wishlist items
+      let query = supabase.from("wish_for").select("*").eq("uid", user.id)
+      
+      // Try to order by created_at if it exists, otherwise just fetch
+      const { data: wishlistItems, error: wishlistError } = await query
+
+      if (wishlistError) {
+        console.error("[Group9] Error fetching wishlist:", wishlistError)
+        console.error("[Group9] Wishlist error details:", JSON.stringify(wishlistError, null, 2))
+        setWishlist([])
+        return
+      }
+
+      console.log("[Group9] Fetched wishlist items:", wishlistItems)
+
+      if (!wishlistItems || wishlistItems.length === 0) {
+        console.log("[Group9] No wishlist items found for user:", user.id)
+        setWishlist([])
+        return
+      }
+
+      // Fetch products for each wishlist item
+      const productIds = wishlistItems
+        .map((item: any) => {
+          const pid = item.pid
+          // Ensure pid is a number
+          return typeof pid === "string" ? parseInt(pid) : pid
+        })
+        .filter((id: any) => id != null && !isNaN(id))
+
+      console.log("[Group9] Product IDs to fetch:", productIds)
+
+      if (productIds.length === 0) {
+        console.log("[Group9] No valid product IDs found")
+        setWishlist([])
+        return
+      }
+
+      const { data: products, error: productsError } = await supabase
+        .from("products_belong_to")
+        .select("*")
+        .in("pid", productIds)
+
+      if (productsError) {
+        console.error("[Group9] Error fetching products:", productsError)
+        setWishlist([])
+        return
+      }
+
+      console.log("[Group9] Fetched products:", products)
+
+      // Combine wishlist items with their products
+      const wishlistWithProducts = wishlistItems.map((item: any) => {
+        const pid = typeof item.pid === "string" ? parseInt(item.pid) : item.pid
+        const product = products?.find((p: any) => p.pid === pid)
+        return {
+          ...item,
+          pid: pid,
+          products_belong_to: product || null,
+        }
+      })
+
+      console.log("[Group9] Combined wishlist with products:", wishlistWithProducts)
+      setWishlist(wishlistWithProducts)
     } catch (error) {
       console.error("[Group9] Error fetching wishlist:", error)
+      setWishlist([])
     }
   }
 
@@ -120,9 +181,9 @@ export default function ProfilePage() {
       } = await supabase.auth.getUser()
 
       if (user) {
-        await supabase.from("wishlist").delete().eq("user_id", user.id).eq("product_id", productId)
+        await supabase.from("wish_for").delete().eq("uid", user.id).eq("pid", parseInt(productId) || productId)
 
-        setWishlist(wishlist.filter((item) => item.product_id !== productId))
+        setWishlist(wishlist.filter((item) => (item.pid?.toString() || item.product_id) !== productId))
 
         toast({
           title: "Removed from wishlist",
@@ -291,8 +352,8 @@ export default function ProfilePage() {
                   >
                     <div className="relative aspect-square bg-[#2a9d8f] border-b-4 border-black overflow-hidden">
                       <Image
-                        src={item.products.image_url || "/placeholder.svg"}
-                        alt={item.products.name}
+                        src={item.products_belong_to?.image_url || "/placeholder.svg"}
+                        alt={item.products_belong_to?.name || "Product"}
                         fill
                         className="object-cover"
                       />
@@ -300,15 +361,15 @@ export default function ProfilePage() {
 
                     <div className="p-4 space-y-3">
                       <h3 className="font-bold text-lg leading-tight line-clamp-2 text-[#1a1a3e]">
-                        {item.products.name}
+                        {item.products_belong_to?.name || "Product"}
                       </h3>
 
                       <div className="flex items-center justify-between">
                         <span className="font-[family-name:var(--font-pixel)] text-xl text-[#1a1a3e]">
-                          ${item.products.price}
+                          ${item.products_belong_to?.price || 0}
                         </span>
                         <Button
-                          onClick={() => removeFromWishlist(item.product_id)}
+                          onClick={() => removeFromWishlist(item.pid?.toString() || item.product_id)}
                           size="icon"
                           className="bg-[#dc3545] hover:bg-[#c82333] text-white border-4 border-black"
                         >

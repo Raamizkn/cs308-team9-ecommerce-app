@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { ArrowLeft, Star, Package } from "lucide-react"
 import { useCart } from "@/lib/cart-context"
 import { useToast } from "@/hooks/use-toast"
+import { WishlistButton } from "@/components/wishlist-button"
 
 interface Product {
   pid: number
@@ -267,14 +268,17 @@ export default function ProductDetailPage() {
                 </div>
               )}
 
-              {/* Add to Cart Button */}
-              <Button
-                onClick={handleAddToCart}
-                disabled={isOutOfStock}
-                className="w-full bg-[#ffb347] hover:bg-[#ffd93d] text-black border-4 border-black font-bold text-lg py-6 pixel-shadow disabled:bg-gray-400 disabled:cursor-not-allowed"
-              >
-                {isOutOfStock ? "OUT OF STOCK" : "ADD TO CART"}
-              </Button>
+              {/* Wishlist and Add to Cart Buttons */}
+              <div className="flex items-center gap-3">
+                <WishlistButton productId={product.pid.toString()} className="flex-shrink-0" />
+                <Button
+                  onClick={handleAddToCart}
+                  disabled={isOutOfStock}
+                  className="flex-1 bg-[#ffb347] hover:bg-[#ffd93d] text-black border-4 border-black font-bold text-lg py-6 pixel-shadow disabled:bg-gray-400 disabled:cursor-not-allowed"
+                >
+                  {isOutOfStock ? "OUT OF STOCK" : "ADD TO CART"}
+                </Button>
+              </div>
             </div>
 
             {/* Product Info */}
