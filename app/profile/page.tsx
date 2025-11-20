@@ -18,12 +18,38 @@ export default function ProfilePage() {
   const [wishlist, setWishlist] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [address, setAddress] = useState("")
+  const [taxId, setTaxId] = useState("")
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
+    checkSalesManagerRedirect()
     fetchUserData()
     fetchWishlist()
   }, [])
+
+  const checkSalesManagerRedirect = async () => {
+    try {
+      const supabase = getSupabaseBrowserClient()
+      const {
+        data: { user: authUser },
+      } = await supabase.auth.getUser()
+
+      if (authUser) {
+        const { data: salesManagerData } = await supabase
+          .from("sales_managers")
+          .select("uid")
+          .eq("uid", authUser.id)
+          .maybeSingle()
+
+        if (salesManagerData) {
+          router.push("/sales-manager/dashboard")
+          return
+        }
+      }
+    } catch (error) {
+      console.error("[Group9] Error checking sales manager:", error)
+    }
+  }
 
   const fetchUserData = async () => {
     try {
@@ -34,16 +60,12 @@ export default function ProfilePage() {
 
       if (authUser) {
         // Get profile from profiles table (not users table)
-        const { data }: any = await supabase.from("profiles").select("*").eq("uid", authUser.id).single()
+        const { data } = await supabase.from("profiles").select("*").eq("uid", authUser.id).single()
         setUser({
           id: authUser.id,
           email: authUser.email,
           name: data?.name || authUser.user_metadata?.name || "User",
-          address: data?.address || data?.home_address || authUser.user_metadata?.address || "Not provided",
         })
-        setAddress(
-          (data?.address as string) || (data?.home_address as string) || (authUser.user_metadata?.address as string) || ""
-        )
       }
     } catch (error) {
       console.error("[Group9] Error fetching user:", error)
@@ -127,6 +149,7 @@ export default function ProfilePage() {
           {
             uid: authUser.id,
             address,
+            tax_id: taxId,
             name: user?.name || authUser.user_metadata?.name || "User",
           },
         ] as any,
@@ -138,8 +161,8 @@ export default function ProfilePage() {
         return
       }
 
-      setUser({ ...user, address: address || "Not provided" })
-      toast({ title: "Address saved", description: "Your home address has been updated." })
+      setUser({ ...user, address: address || "Not provided", taxId: taxId || "" })
+      toast({ title: "Profile saved", description: "Your profile information has been updated." })
     } catch (e) {
       toast({ title: "Save failed", description: "Something went wrong.", variant: "destructive" })
     } finally {
@@ -227,8 +250,19 @@ export default function ProfilePage() {
                       placeholder="Enter your home address"
                       className="border-4 border-black"
                     />
+                  </div>
+                </div>
+                <div>
+                  <span className="font-semibold text-[#6c757d]">Tax ID</span>
+                  <div className="mt-2 grid grid-cols-1 gap-2">
+                    <Input
+                      value={taxId}
+                      onChange={(e) => setTaxId(e.target.value)}
+                      placeholder="Enter your tax ID"
+                      className="border-4 border-black"
+                    />
                     <Button onClick={saveAddress} disabled={saving} className="w-full bg-[#ffb347] border-4 border-black text-black font-bold">
-                      {saving ? "SAVING..." : "SAVE ADDRESS"}
+                      {saving ? "SAVING..." : "SAVE PROFILE"}
                     </Button>
                   </div>
                 </div>

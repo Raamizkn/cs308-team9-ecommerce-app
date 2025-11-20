@@ -27,7 +27,7 @@ export default function LoginPage() {
 
     try {
       const supabase = getSupabaseBrowserClient()
-      const { error } = await supabase.auth.signInWithPassword({
+      const { data: authData, error } = await supabase.auth.signInWithPassword({
         email: formData.email,
         password: formData.password,
       })
@@ -41,12 +41,61 @@ export default function LoginPage() {
         return
       }
 
-      toast({
-        title: "Welcome back!",
-        description: "You have successfully logged in",
-      })
+      if (!authData.user) {
+        toast({
+          title: "Login failed",
+          description: "Invalid credentials",
+          variant: "destructive",
+        })
+        return
+      }
 
-      router.push("/profile")
+      // Check user role and redirect accordingly
+      // Using .maybeSingle() to avoid errors when user doesn't have that role
+      const { data: salesManager, error: salesManagerError } = await supabase
+        .from("sales_managers")
+        .select("uid")
+        .eq("uid", authData.user.id)
+        .maybeSingle()
+
+      const { data: productManager, error: productManagerError } = await supabase
+        .from("product_managers")
+        .select("uid")
+        .eq("uid", authData.user.id)
+        .maybeSingle()
+
+      const { data: supportAgent, error: supportAgentError } = await supabase
+        .from("support_agents")
+        .select("uid")
+        .eq("uid", authData.user.id)
+        .maybeSingle()
+
+      if (!salesManagerError && salesManager) {
+        toast({
+          title: "Welcome back!",
+          description: "You have successfully logged in as Sales Manager",
+        })
+        router.push("/sales-manager/dashboard")
+      } else if (!productManagerError && productManager) {
+        toast({
+          title: "Welcome back!",
+          description: "You have successfully logged in",
+        })
+        router.push("/admin")
+      } else if (!supportAgentError && supportAgent) {
+        toast({
+          title: "Welcome back!",
+          description: "You have successfully logged in",
+        })
+        router.push("/admin")
+      } else {
+        toast({
+          title: "Welcome back!",
+          description: "You have successfully logged in",
+        })
+        router.push("/profile")
+      }
+
       router.refresh()
     } catch (error) {
       console.error("[Group9] Login error:", error)

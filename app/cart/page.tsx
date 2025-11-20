@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import Image from "next/image"
 import { PixelHeader } from "@/components/pixel-header"
@@ -8,12 +8,43 @@ import { useCart } from "@/lib/cart-context"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Minus, Plus, Trash2, ArrowLeft } from "lucide-react"
+import { useRouter } from "next/navigation"
+import { getSupabaseBrowserClient } from "@/lib/supabase/client"
 
 export default function CartPage() {
+  const router = useRouter()
   const { items, updateQuantity, removeItem, totalPrice, clearCart } = useCart()
   const [discountCode, setDiscountCode] = useState("")
   const [discount, setDiscount] = useState(0)
   const [discountError, setDiscountError] = useState("")
+
+  useEffect(() => {
+    checkSalesManagerRedirect()
+  }, [])
+
+  const checkSalesManagerRedirect = async () => {
+    try {
+      const supabase = getSupabaseBrowserClient()
+      const {
+        data: { user: authUser },
+      } = await supabase.auth.getUser()
+
+      if (authUser) {
+        const { data: salesManagerData } = await supabase
+          .from("sales_managers")
+          .select("uid")
+          .eq("uid", authUser.id)
+          .maybeSingle()
+
+        if (salesManagerData) {
+          router.push("/sales-manager/dashboard")
+          return
+        }
+      }
+    } catch (error) {
+      console.error("[Group9] Error checking sales manager:", error)
+    }
+  }
 
   const applyDiscount = async () => {
     if (!discountCode.trim()) {
