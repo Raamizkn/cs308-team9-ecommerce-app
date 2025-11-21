@@ -7,9 +7,28 @@ import { getSupabaseBrowserClient } from "@/lib/supabase/client"
 import { BarChart3, Package, Users, MessageSquare } from "lucide-react"
 import Link from "next/link"
 
+type UserRole = "sales_manager" | "product_manager" | "support_agent"
+
+type AdminUser = {
+  id: string
+  name: string | null
+  role: UserRole
+}
+
+type ProfileRow = {
+  uid: string
+  name: string | null
+}
+
+const ROLE_TABLES: Record<UserRole, string> = {
+  sales_manager: "sales_managers",
+  product_manager: "product_managers",
+  support_agent: "support_agents",
+}
+
 export default function AdminDashboard() {
   const router = useRouter()
-  const [user, setUser] = useState<any>(null)
+  const [user, setUser] = useState<AdminUser | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -28,14 +47,45 @@ export default function AdminDashboard() {
         return
       }
 
-      const { data: userData } = await supabase.from("users").select("*").eq("id", authUser.id).single()
+      const { data: profileData, error: profileError } = await supabase
+        .from("profiles")
+        .select("uid, name")
+        .eq("uid", authUser.id)
+        .maybeSingle()
 
-      if (!userData || !["sales_manager", "product_manager", "support_agent"].includes(userData.role)) {
+      const profile = profileData as ProfileRow | null
+
+      if (profileError || !profile) {
         router.push("/")
         return
       }
 
-      setUser(userData)
+      let resolvedRole: UserRole | null = null
+
+      for (const [role, table] of Object.entries(ROLE_TABLES) as [UserRole, string][]) {
+        const { data, error } = await supabase.from(table).select("uid").eq("uid", authUser.id).maybeSingle()
+
+        if (error) {
+          console.error(`[Group9] Error checking role table ${table}:`, error)
+          continue
+        }
+
+        if (data) {
+          resolvedRole = role
+          break
+        }
+      }
+
+      if (!resolvedRole) {
+        router.push("/")
+        return
+      }
+
+      setUser({
+        id: profile.uid,
+        name: profile.name,
+        role: resolvedRole,
+      })
     } catch (error) {
       console.error("[Group9] Error checking admin access:", error)
       router.push("/")

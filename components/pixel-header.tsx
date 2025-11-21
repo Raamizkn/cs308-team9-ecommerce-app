@@ -18,25 +18,49 @@ export function PixelHeader() {
   }, [])
 
   const checkAuth = async () => {
-    const supabase = getSupabaseBrowserClient()
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-    
-    if (user) {
-      setIsAuthenticated(true)
-      // Check if user is a sales manager
-      const { data: salesManagerData } = await supabase
-        .from("sales_managers")
-        .select("uid")
-        .eq("uid", user.id)
-        .maybeSingle()
-      setIsSalesManager(!!salesManagerData)
-    } else {
+    try {
+      const supabase = getSupabaseBrowserClient()
+      const {
+        data: { user },
+        error: authError,
+      } = await supabase.auth.getUser()
+      
+      if (authError) {
+        console.error("[Group9] Auth error:", authError)
+        setIsAuthenticated(false)
+        setIsSalesManager(false)
+        return
+      }
+      
+      if (user) {
+        setIsAuthenticated(true)
+        // Check if user is a sales manager
+        try {
+          const { data: salesManagerData, error: salesManagerError } = await supabase
+            .from("sales_managers")
+            .select("uid")
+            .eq("uid", user.id)
+            .maybeSingle()
+          
+          if (salesManagerError) {
+            console.error("[Group9] Sales manager check error:", salesManagerError)
+          }
+          setIsSalesManager(!!salesManagerData)
+        } catch (error) {
+          console.error("[Group9] Error checking sales manager:", error)
+          setIsSalesManager(false)
+        }
+      } else {
+        setIsAuthenticated(false)
+        setIsSalesManager(false)
+      }
+    } catch (error) {
+      console.error("[Group9] Error checking auth:", error)
       setIsAuthenticated(false)
       setIsSalesManager(false)
+    } finally {
+      setIsLoading(false)
     }
-    setIsLoading(false)
   }
 
   return (
