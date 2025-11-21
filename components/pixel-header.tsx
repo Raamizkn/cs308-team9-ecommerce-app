@@ -68,6 +68,7 @@ export function PixelHeader() {
 
           {/* Actions */}
           <div className="flex items-center gap-3">
+            {/* Search - Always visible */}
             <Button
               variant="ghost"
               size="icon"
@@ -75,7 +76,9 @@ export function PixelHeader() {
             >
               <Search className="h-5 w-5" />
             </Button>
-            {!isLoading && isSalesManager ? (
+            
+            {/* User/Profile or Dashboard - Always visible */}
+            {isSalesManager ? (
               <Link href="/sales-manager/dashboard">
                 <Button
                   variant="ghost"
@@ -86,7 +89,7 @@ export function PixelHeader() {
                   <BarChart3 className="h-5 w-5" />
                 </Button>
               </Link>
-            ) : !isLoading ? (
+            ) : (
               <Link href={isAuthenticated ? "/profile" : "/login"}>
                 <Button
                   variant="ghost"
@@ -96,19 +99,24 @@ export function PixelHeader() {
                   <User className="h-5 w-5" />
                 </Button>
               </Link>
-            ) : null}
-            {!isLoading && isAuthenticated && !isSalesManager && (
-              <Link href="/orders">
+            )}
+            
+            {/* Orders - Always visible for non-sales managers */}
+            {!isSalesManager && (
+              <Link href={isAuthenticated ? "/orders" : "/login"}>
                 <Button
                   variant="ghost"
                   size="icon"
                   className="text-white hover:bg-[#3d2660] hover:text-[#ffb347] border-2 border-transparent hover:border-black"
+                  title={isAuthenticated ? "View orders" : "Login to view orders"}
                 >
                   <Package className="h-5 w-5" />
                 </Button>
               </Link>
             )}
-            {!isLoading && !isSalesManager && (
+            
+            {/* Cart - Always visible for non-sales managers */}
+            {!isSalesManager && (
               <Link href="/cart">
                 <Button
                   variant="ghost"

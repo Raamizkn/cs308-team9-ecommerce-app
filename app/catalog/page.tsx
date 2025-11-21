@@ -5,8 +5,13 @@ import { PixelHeader } from "@/components/pixel-header"
 import { CategoryFilter } from "@/components/category-filter"
 import { ProductCard } from "@/components/product-card"
 import { SearchBar } from "@/components/search-bar"
-import { Button } from "@/components/ui/button"
-import { ArrowUpDown } from "lucide-react"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 
 interface Product {
   pid: number
@@ -41,6 +46,7 @@ export default function CatalogPage() {
 
   useEffect(() => {
     fetchProducts()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCategory, searchQuery, sortBy])
 
   const fetchCategories = async () => {
@@ -83,15 +89,8 @@ export default function CatalogPage() {
     }
   }
 
-  const cycleSortBy = () => {
-    const sortOptions = ["created_at", "price_asc", "price_desc", "rating"]
-    const currentIndex = sortOptions.indexOf(sortBy)
-    const nextIndex = (currentIndex + 1) % sortOptions.length
-    setSortBy(sortOptions[nextIndex])
-  }
-
-  const getSortLabel = () => {
-    switch (sortBy) {
+  const getSortLabel = (value: string) => {
+    switch (value) {
       case "price_asc":
         return "PRICE: LOW TO HIGH"
       case "price_desc":
@@ -135,13 +134,27 @@ export default function CatalogPage() {
           <p className="text-sm text-[#6c757d] font-semibold">
             {loading ? "Loading..." : `${products.length} products found`}
           </p>
-          <Button
-            onClick={cycleSortBy}
-            className="bg-white border-4 border-black text-black hover:bg-[#e9ecef] font-bold"
-          >
-            <ArrowUpDown className="h-4 w-4 mr-2" />
-            {getSortLabel()}
-          </Button>
+          <Select value={sortBy} onValueChange={setSortBy}>
+            <SelectTrigger className="w-full sm:w-[250px] bg-white border-4 border-black font-bold text-black hover:bg-[#e9ecef] transition-colors">
+              <SelectValue>
+                {getSortLabel(sortBy)}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent className="bg-white border-4 border-black">
+              <SelectItem value="created_at" className="font-bold cursor-pointer hover:bg-[#ffb347] focus:bg-[#ffb347]">
+                NEWEST FIRST
+              </SelectItem>
+              <SelectItem value="price_asc" className="font-bold cursor-pointer hover:bg-[#ffb347] focus:bg-[#ffb347]">
+                PRICE: LOW TO HIGH
+              </SelectItem>
+              <SelectItem value="price_desc" className="font-bold cursor-pointer hover:bg-[#ffb347] focus:bg-[#ffb347]">
+                PRICE: HIGH TO LOW
+              </SelectItem>
+              <SelectItem value="rating" className="font-bold cursor-pointer hover:bg-[#ffb347] focus:bg-[#ffb347]">
+                HIGHEST RATED
+              </SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
         {/* Products Grid */}
