@@ -19,6 +19,8 @@ import {
 } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
+import { pdf } from "@react-pdf/renderer"
+import { InvoicePDF } from "@/components/invoice-pdf"
 
 export default function OrderDetailPage() {
   const params = useParams()
@@ -29,6 +31,7 @@ export default function OrderDetailPage() {
   const [refundReason, setRefundReason] = useState("")
   const [refundDialogOpen, setRefundDialogOpen] = useState(false)
   const [isCancelling, setIsCancelling] = useState(false)
+  const [downloadingPdf, setDownloadingPdf] = useState(false)
 
   useEffect(() => {
     fetchOrderDetails()
@@ -132,12 +135,66 @@ export default function OrderDetailPage() {
     }
   }
 
-  const downloadInvoice = () => {
-    toast({
-      title: "Downloading invoice",
-      description: "Your invoice is being generated",
-    })
-    // In a real app, this would generate and download a PDF
+  const downloadInvoice = async () => {
+    if (!order) return
+
+    setDownloadingPdf(true)
+    try {
+      // Calculate totals
+      const subtotal = order.order_items?.reduce((sum: number, item: any) => sum + (item.price * item.quantity), 0) || 0
+      const shipping = 10.00
+      const tax = subtotal * 0.08
+      const total = subtotal + shipping + tax
+
+      // Prepare invoice data
+      const invoiceData = {
+        orderId: order.id,
+        orderDate: order.created_at,
+        customerName: order.customer_name || "Customer",
+        customerEmail: order.customer_email || "customer@pixelvault.com",
+        shippingAddress: order.shipping_address || "N/A",
+        items: order.order_items?.map((item: any) => ({
+          id: item.id,
+          product_name: item.products?.name || "Product",
+          quantity: item.quantity,
+          price: item.price,
+          subtotal: item.price * item.quantity,
+        })) || [],
+        subtotal,
+        shipping,
+        tax,
+        total,
+        status: order.status,
+        paymentMethod: order.payment_method || "Credit Card",
+      }
+
+      // Generate PDF
+      const blob = await pdf(<InvoicePDF data={invoiceData} />).toBlob()
+
+      // Download PDF
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement("a")
+      link.href = url
+      link.download = `pixelvault-invoice-${order.id.substring(0, 8)}.pdf`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+
+      toast({
+        title: "Invoice downloaded",
+        description: "Your invoice has been saved successfully",
+      })
+    } catch (error) {
+      console.error("[Group9] Error generating invoice:", error)
+      toast({
+        title: "Download failed",
+        description: "Failed to generate invoice. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setDownloadingPdf(false)
+    }
   }
 
   const getStatusIcon = (status: string) => {
@@ -349,10 +406,20 @@ export default function OrderDetailPage() {
               <div className="space-y-3">
                 <Button
                   onClick={downloadInvoice}
+                  disabled={downloadingPdf}
                   className="w-full bg-[#ffb347] hover:bg-[#ffd93d] text-black border-4 border-black font-bold"
                 >
-                  <Download className="h-4 w-4 mr-2" />
-                  DOWNLOAD INVOICE
+                  {downloadingPdf ? (
+                    <>
+                      <div className="inline-block w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin mr-2" />
+                      GENERATING...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="h-4 w-4 mr-2" />
+                      DOWNLOAD INVOICE
+                    </>
+                  )}
                 </Button>
 
                 {order.status === "delivered" && (
