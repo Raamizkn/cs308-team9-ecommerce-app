@@ -31,6 +31,10 @@ export async function GET(request: NextRequest) {
       query = query.order("price", { ascending: true })
     } else if (sort === "price_desc") {
       query = query.order("price", { ascending: false })
+    } else if (sort === "popularity") {
+      // For popularity, we'll fetch all and sort by wishlist count in memory
+      // since Supabase doesn't support sorting by aggregated counts easily
+      query = query.order("name", { ascending: true })
     } else {
       query = query.order("name", { ascending: true })
     }
@@ -42,12 +46,32 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    // Map database fields to frontend expected fields
-    const products = data?.map(product => ({
+    // If sorting by popularity, get wishlist counts
+    let products = data?.map(product => ({
       ...product,
       id: product.pid,
-      stock: product.stock_quantity
+      stock: product.stock_quantity,
+      wishlist_count: 0
     }))
+
+    if (sort === "popularity" && products) {
+      // Get wishlist counts for all products
+      const { data: wishlistData } = await supabase
+        .from("wish_for")
+        .select("pid")
+      
+      // Count wishlists per product
+      const wishlistCounts: Record<number, number> = {}
+      wishlistData?.forEach(item => {
+        wishlistCounts[item.pid] = (wishlistCounts[item.pid] || 0) + 1
+      })
+
+      // Add counts and sort
+      products = products.map(p => ({
+        ...p,
+        wishlist_count: wishlistCounts[p.pid] || 0
+      })).sort((a, b) => b.wishlist_count - a.wishlist_count)
+    }
 
     return NextResponse.json({ products })
   } catch (error) {

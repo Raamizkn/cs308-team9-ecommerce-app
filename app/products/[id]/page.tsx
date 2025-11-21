@@ -6,10 +6,20 @@ import Link from "next/link"
 import Image from "next/image"
 import { PixelHeader } from "@/components/pixel-header"
 import { Button } from "@/components/ui/button"
-import { ArrowLeft, Star, Package } from "lucide-react"
+import { ArrowLeft, Star, Package, MessageSquare, ThumbsUp } from "lucide-react"
 import { useCart } from "@/lib/cart-context"
 import { useToast } from "@/hooks/use-toast"
 import { WishlistButton } from "@/components/wishlist-button"
+import { getSupabaseBrowserClient } from "@/lib/supabase/client"
+import { Textarea } from "@/components/ui/textarea"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
 
 interface Product {
   pid: number
@@ -26,6 +36,15 @@ interface Product {
   review_count?: number
   is_limited_edition?: boolean
   categories?: { name: string }
+}
+
+interface Review {
+  review_id: string
+  rating: number
+  comment: string
+  created_at: string
+  is_approved: boolean
+  profiles: { name: string }
 }
 
 export default function ProductDetailPage() {
@@ -315,6 +334,74 @@ export default function ProductDetailPage() {
                     <span className="text-[#1a1a3e] font-bold">{product.categories.name}</span>
                   </div>
                 )}
+              </div>
+            </div>
+
+            {/* Reviews Section */}
+            <div className="bg-white border-4 border-black p-6 pixel-shadow-sm">
+              <h3 className="font-bold text-2xl text-[#1a1a3e] mb-6 flex items-center gap-2">
+                <MessageSquare className="h-6 w-6" />
+                CUSTOMER REVIEWS
+              </h3>
+
+              {/* Write Review Button - Shows only for delivered orders */}
+              <div className="mb-6 p-4 bg-[#e9ecef] border-2 border-black">
+                <p className="text-sm text-[#6c757d] mb-3">
+                  <strong>Note:</strong> You can only review products you've purchased and received.
+                </p>
+                <Button
+                  className="bg-[#ffb347] hover:bg-[#ffd93d] text-black border-4 border-black font-bold"
+                  onClick={() => {
+                    toast({
+                      title: "Feature Coming Soon",
+                      description: "Reviews will be available once backend is connected. You can review products after delivery.",
+                    })
+                  }}
+                >
+                  <Star className="h-4 w-4 mr-2" />
+                  WRITE A REVIEW
+                </Button>
+              </div>
+
+              {/* Reviews List - Mock for now */}
+              <div className="space-y-4">
+                <div className="p-4 border-2 border-black bg-[#f8f9fa]">
+                  <div className="flex items-start justify-between mb-2">
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <div className="flex items-center gap-1">
+                          {[...Array(5)].map((_, i) => (
+                            <Star
+                              key={i}
+                              className={`h-4 w-4 ${i < 5 ? "fill-[#ffd93d] text-[#ffd93d]" : "fill-none text-gray-400"}`}
+                            />
+                          ))}
+                        </div>
+                        <span className="font-bold text-[#1a1a3e]">Sample User</span>
+                      </div>
+                      <p className="text-xs text-[#6c757d]">Verified Purchase</p>
+                    </div>
+                    <span className="text-xs text-[#6c757d]">2 days ago</span>
+                  </div>
+                  <p className="text-[#1a1a3e]">
+                    This is a sample review. Real reviews will appear here once you connect the backend API.
+                    Reviews require product manager approval before being visible.
+                  </p>
+                  <div className="mt-2 flex items-center gap-2">
+                    <ThumbsUp className="h-4 w-4 text-[#6c757d]" />
+                    <span className="text-xs text-[#6c757d] font-semibold">Helpful (12)</span>
+                  </div>
+                </div>
+
+                <div className="text-center p-8 border-2 border-dashed border-[#6c757d]">
+                  <MessageSquare className="h-12 w-12 text-[#6c757d] mx-auto mb-3" />
+                  <p className="text-[#6c757d] font-semibold">
+                    No reviews yet. Be the first to review this product!
+                  </p>
+                  <p className="text-sm text-[#6c757d] mt-2">
+                    Backend API ready - just needs to be connected to display real reviews
+                  </p>
+                </div>
               </div>
             </div>
           </div>
