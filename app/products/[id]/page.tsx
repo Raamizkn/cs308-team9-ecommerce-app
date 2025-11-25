@@ -6,7 +6,7 @@ import Link from "next/link"
 import Image from "next/image"
 import { PixelHeader } from "@/components/pixel-header"
 import { Button } from "@/components/ui/button"
-import { ArrowLeft, Star, Package, MessageSquare, ThumbsUp } from "lucide-react"
+import { ArrowLeft, Star, Package, MessageSquare, ThumbsUp, Percent } from "lucide-react"
 import { useCart } from "@/lib/cart-context"
 import { useToast } from "@/hooks/use-toast"
 import { WishlistButton } from "@/components/wishlist-button"
@@ -36,6 +36,18 @@ interface Product {
   review_count?: number
   is_limited_edition?: boolean
   categories?: { name: string }
+  discount_rate?: number | null
+  discounted_price?: number | null
+  has_discount?: boolean
+}
+
+interface Review {
+  review_id: string
+  rating: number
+  comment: string
+  created_at: string
+  is_approved: boolean
+  profiles: { name: string }
 }
 
 interface Review {
@@ -91,12 +103,16 @@ export default function ProductDetailPage() {
   const handleAddToCart = () => {
     if (!product) return
 
+    const finalPrice = product.has_discount && product.discounted_price 
+      ? product.discounted_price 
+      : product.price
+
     for (let i = 0; i < quantity; i++) {
       addItem({
         id: product.pid.toString(),
         product_id: product.pid.toString(),
         name: product.name,
-        price: product.price,
+        price: finalPrice,
         image_url: product.image_url || "/placeholder.svg",
         stock: product.stock_quantity,
       })
@@ -104,7 +120,7 @@ export default function ProductDetailPage() {
 
     toast({
       title: "Added to cart",
-      description: `${quantity} ${product.name} added to your cart`,
+      description: `${quantity} ${product.name} added to your cart ${product.has_discount ? `at $${finalPrice.toFixed(2)} (discounted!)` : ''}`,
     })
   }
 
@@ -153,6 +169,8 @@ export default function ProductDetailPage() {
   const reviewCount = product.review_count || 0
   const isLowStock = product.stock_quantity < 20 && product.stock_quantity > 0
   const isOutOfStock = product.stock_quantity === 0
+  const displayPrice = product.has_discount && product.discounted_price ? product.discounted_price : product.price
+  const discountPercentage = product.discount_rate ? Math.round(product.discount_rate * 100) : 0
 
   return (
     <div className="min-h-screen bg-[#f8f9fa]">
@@ -178,19 +196,33 @@ export default function ProductDetailPage() {
                 fill
                 className="object-cover"
               />
+              
+              {/* Top-left badges */}
+              <div className="absolute top-4 left-4 flex flex-col gap-2">
+                {product.has_discount && product.discount_rate && (
+                  <div className="bg-[#6bcf7f] border-4 border-black px-4 py-2 flex items-center gap-2">
+                    <Percent className="h-5 w-5 text-black" />
+                    <span className="text-sm font-bold text-black">{discountPercentage}% OFF</span>
+                  </div>
+                )}
+                {isOutOfStock && (
+                  <div className="bg-[#dc3545] border-4 border-black px-4 py-2">
+                    <span className="text-sm font-bold text-white">OUT OF STOCK</span>
+                  </div>
+                )}
+              </div>
+              
+              {/* Top-right badge */}
               {product.is_limited_edition && (
                 <div className="absolute top-4 right-4 bg-[#ff6b9d] border-4 border-black px-4 py-2">
                   <span className="text-sm font-bold text-white">LIMITED EDITION</span>
                 </div>
               )}
-              {isLowStock && (
-                <div className="absolute top-4 left-4 bg-[#ffb347] border-4 border-black px-4 py-2">
+              
+              {/* Bottom-right badge - LOW STOCK */}
+              {isLowStock && !isOutOfStock && (
+                <div className="absolute bottom-4 right-4 bg-[#ffb347] border-4 border-black px-4 py-2">
                   <span className="text-sm font-bold text-black">LOW STOCK</span>
-                </div>
-              )}
-              {isOutOfStock && (
-                <div className="absolute top-4 left-4 bg-[#dc3545] border-4 border-black px-4 py-2">
-                  <span className="text-sm font-bold text-white">OUT OF STOCK</span>
                 </div>
               )}
             </div>
@@ -220,9 +252,30 @@ export default function ProductDetailPage() {
 
               {/* Price */}
               <div className="mb-6">
-                <span className="font-[family-name:var(--font-pixel)] text-4xl text-[#5b3a8f]">
-                  ${product.price.toFixed(2)}
-                </span>
+                {product.has_discount && product.discounted_price ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-3">
+                      <span className="font-[family-name:var(--font-pixel)] text-4xl text-[#5b3a8f]">
+                        ${product.discounted_price.toFixed(2)}
+                      </span>
+                      <div className="bg-[#6bcf7f] border-2 border-black px-3 py-1">
+                        <span className="text-sm font-bold text-black">{discountPercentage}% OFF</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xl text-[#6c757d] line-through">
+                        ${product.price.toFixed(2)}
+                      </span>
+                      <span className="text-sm text-[#6bcf7f] font-bold">
+                        Save ${(product.price - product.discounted_price).toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <span className="font-[family-name:var(--font-pixel)] text-4xl text-[#5b3a8f]">
+                    ${product.price.toFixed(2)}
+                  </span>
+                )}
               </div>
 
               {/* Stock Status */}

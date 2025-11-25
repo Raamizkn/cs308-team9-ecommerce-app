@@ -25,7 +25,44 @@ export async function GET(
       return NextResponse.json({ error: "Product not found" }, { status: 404 })
     }
 
-    return NextResponse.json({ product: data })
+    // Fetch discount information for this product
+    const { data: discountData } = await supabase
+      .from("applies_to")
+      .select(`
+        pid,
+        discount_campaigns (
+          did,
+          rate
+        )
+      `)
+      .eq("pid", productId)
+
+    // Find highest discount if multiple exist
+    let highestDiscount: { rate: number; campaign_id: number } | null = null
+    
+    if (discountData && discountData.length > 0) {
+      discountData.forEach((item: any) => {
+        const rate = item.discount_campaigns?.rate || 0
+        const did = item.discount_campaigns?.did
+        
+        if (!highestDiscount || highestDiscount.rate < rate) {
+          highestDiscount = { rate, campaign_id: did }
+        }
+      })
+    }
+
+    // Add discount information to product
+    const productWithDiscount = {
+      ...data,
+      discount_rate: highestDiscount?.rate || null,
+      discount_campaign_id: highestDiscount?.campaign_id || null,
+      discounted_price: highestDiscount 
+        ? Number((data.price * (1 - highestDiscount.rate)).toFixed(2))
+        : null,
+      has_discount: !!highestDiscount
+    }
+
+    return NextResponse.json({ product: productWithDiscount })
   } catch (error) {
     console.error("[Group9] Unexpected error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })

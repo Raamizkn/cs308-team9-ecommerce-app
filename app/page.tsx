@@ -25,6 +25,9 @@ interface Product {
   is_limited_edition: boolean
   stock_quantity: number
   stock: number // Added during transformation
+  discount_rate?: number | null
+  discounted_price?: number | null
+  has_discount?: boolean
 }
 
 interface Category {
@@ -78,6 +81,9 @@ export default function HomePage() {
         review_count: product.review_count || 0,
         is_limited_edition: product.is_limited_edition || false,
         stock: product.stock_quantity || 0,
+        discount_rate: product.discount_rate || null,
+        discounted_price: product.discounted_price || null,
+        has_discount: product.has_discount || false,
       }))
       setProducts(transformedProducts)
     } catch (error) {

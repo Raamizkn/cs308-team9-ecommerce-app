@@ -1,6 +1,6 @@
 import Image from "next/image"
 import Link from "next/link"
-import { Star } from "lucide-react"
+import { Star, Percent } from "lucide-react"
 import { AddToCartButton } from "./add-to-cart-button" // Import the client component
 import { WishlistButton } from "./wishlist-button"
 
@@ -14,6 +14,9 @@ interface ProductCardProps {
   review_count: number
   is_limited_edition: boolean
   stock: number
+  discount_rate?: number | null
+  discounted_price?: number | null
+  has_discount?: boolean
 }
 
 export function ProductCard({
@@ -26,7 +29,12 @@ export function ProductCard({
   review_count,
   is_limited_edition,
   stock,
+  discount_rate,
+  discounted_price,
+  has_discount,
 }: ProductCardProps) {
+  const displayPrice = has_discount && discounted_price ? discounted_price : price
+  const discountPercentage = discount_rate ? Math.round(discount_rate * 100) : 0
   return (
     <div className="bg-[#4ecdc4] border-4 border-black pixel-shadow hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all">
       {/* Image Container - Clickable */}
@@ -36,14 +44,27 @@ export function ProductCard({
             <Image src={image_url || "/placeholder.svg"} alt={name} fill className="object-cover" />
           </div>
         </Link>
-        {is_limited_edition && (
-          <div className="absolute top-2 left-2 bg-[#ff6b9d] border-2 border-black px-2 py-1 z-10">
-            <span className="text-[10px] font-bold text-white">LIMITED</span>
-          </div>
-        )}
+        {/* Top-left badges - stacked vertically */}
+        <div className="absolute top-2 left-2 z-10 flex flex-col gap-1">
+          {has_discount && discount_rate && (
+            <div className="bg-[#6bcf7f] border-2 border-black px-2 py-1 flex items-center gap-1">
+              <Percent className="h-3 w-3 text-black" />
+              <span className="text-[10px] font-bold text-black">{discountPercentage}% OFF</span>
+            </div>
+          )}
+          {is_limited_edition && (
+            <div className="bg-[#ff6b9d] border-2 border-black px-2 py-1">
+              <span className="text-[10px] font-bold text-white">LIMITED</span>
+            </div>
+          )}
+        </div>
+        
+        {/* Bottom-right badge - LOW STOCK */}
         {stock < 20 && stock > 0 && (
-          <div className="absolute top-2 left-2 bg-[#ffb347] border-2 border-black px-2 py-1 z-10">
-            <span className="text-[10px] font-bold text-black">LOW STOCK</span>
+          <div className="absolute bottom-2 right-2 z-10">
+            <div className="bg-[#ffb347] border-2 border-black px-2 py-1">
+              <span className="text-[10px] font-bold text-black">LOW STOCK</span>
+            </div>
           </div>
         )}
         {/* Wishlist button overlay on image - clickable and doesn't navigate */}
@@ -79,13 +100,28 @@ export function ProductCard({
 
         {/* Price and Button */}
         <div className="flex items-center justify-between pt-2 gap-2">
-          <span className="font-[family-name:var(--font-pixel)] text-xl text-[#1a1a3e]">${price}</span>
+          <div className="flex flex-col">
+            {has_discount && discounted_price ? (
+              <>
+                <span className="font-[family-name:var(--font-pixel)] text-xl text-[#1a1a3e]">
+                  ${discounted_price.toFixed(2)}
+                </span>
+                <span className="text-xs text-[#6c757d] line-through">
+                  ${price.toFixed(2)}
+                </span>
+              </>
+            ) : (
+              <span className="font-[family-name:var(--font-pixel)] text-xl text-[#1a1a3e]">
+                ${price.toFixed(2)}
+              </span>
+            )}
+          </div>
           <AddToCartButton
             product={{
               id,
               product_id: id,
               name,
-              price,
+              price: displayPrice,
               image_url,
               stock,
             }}

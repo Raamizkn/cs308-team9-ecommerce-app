@@ -11,11 +11,11 @@ import { useToast } from "@/hooks/use-toast"
 import { ArrowLeft, DollarSign, Search, Edit2, Save, X } from "lucide-react"
 
 interface Product {
-  product_id: number
+  pid: number
   name: string
   description: string
   price: number
-  quantity_in_stocks: number
+  stock_quantity: number
   category_name: string
 }
 
@@ -58,13 +58,13 @@ export default function PricingManagementPage() {
 
       // Load products with category info
       const { data: productsData, error: productsError } = await supabase
-        .from("products")
+        .from("products_belong_to")
         .select(`
-          product_id,
+          pid,
           name,
           description,
           price,
-          quantity_in_stocks,
+          stock_quantity,
           categories (name)
         `)
         .order("name")
@@ -80,11 +80,11 @@ export default function PricingManagementPage() {
       }
 
       const formattedProducts = (productsData || []).map((p: any) => ({
-        product_id: p.product_id,
+        pid: p.pid,
         name: p.name,
         description: p.description,
         price: p.price,
-        quantity_in_stocks: p.quantity_in_stocks,
+        stock_quantity: p.stock_quantity,
         category_name: p.categories?.name || "Uncategorized",
       }))
 
@@ -98,7 +98,7 @@ export default function PricingManagementPage() {
   }
 
   const startEdit = (product: Product) => {
-    setEditingId(product.product_id)
+    setEditingId(product.pid)
     setEditPrice(product.price.toString())
   }
 
@@ -123,9 +123,9 @@ export default function PricingManagementPage() {
     try {
       const supabase = getSupabaseBrowserClient()
       const { error } = await supabase
-        .from("products")
+        .from("products_belong_to")
         .update({ price: newPrice })
-        .eq("product_id", productId)
+        .eq("pid", productId)
 
       if (error) {
         throw error
@@ -133,7 +133,7 @@ export default function PricingManagementPage() {
 
       // Update local state
       setProducts(products.map(p => 
-        p.product_id === productId ? { ...p, price: newPrice } : p
+        p.pid === productId ? { ...p, price: newPrice } : p
       ))
 
       toast({
@@ -230,12 +230,12 @@ export default function PricingManagementPage() {
                 ) : (
                   filteredProducts.map((product, index) => (
                     <tr
-                      key={product.product_id}
+                      key={product.pid}
                       className={`border-b-2 border-black ${
                         index % 2 === 0 ? "bg-white" : "bg-[#f8f9fa]"
                       }`}
                     >
-                      <td className="px-6 py-4 font-mono font-bold">#{product.product_id}</td>
+                      <td className="px-6 py-4 font-mono font-bold">#{product.pid}</td>
                       <td className="px-6 py-4">
                         <div className="font-bold text-[#1a1a3e]">{product.name}</div>
                         <div className="text-sm text-[#6c757d] line-clamp-1">
@@ -248,7 +248,7 @@ export default function PricingManagementPage() {
                         </span>
                       </td>
                       <td className="px-6 py-4">
-                        {editingId === product.product_id ? (
+                        {editingId === product.pid ? (
                           <div className="flex items-center gap-2">
                             <span className="font-bold">$</span>
                             <Input
@@ -270,22 +270,22 @@ export default function PricingManagementPage() {
                       <td className="px-6 py-4">
                         <span
                           className={`font-bold ${
-                            product.quantity_in_stocks === 0
+                            product.stock_quantity === 0
                               ? "text-red-600"
-                              : product.quantity_in_stocks < 10
+                              : product.stock_quantity < 10
                               ? "text-orange-600"
                               : "text-green-600"
                           }`}
                         >
-                          {product.quantity_in_stocks} units
+                          {product.stock_quantity} units
                         </span>
                       </td>
                       <td className="px-6 py-4 text-right">
-                        {editingId === product.product_id ? (
+                        {editingId === product.pid ? (
                           <div className="flex items-center justify-end gap-2">
                             <Button
                               size="sm"
-                              onClick={() => savePrice(product.product_id)}
+                              onClick={() => savePrice(product.pid)}
                               disabled={updating}
                               className="bg-[#6bcf7f] hover:bg-[#5bb86f] text-black border-2 border-black font-bold"
                             >

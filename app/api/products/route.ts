@@ -73,6 +73,47 @@ export async function GET(request: NextRequest) {
       })).sort((a, b) => b.wishlist_count - a.wishlist_count)
     }
 
+
+    // Fetch discounts for all products
+    if (products && products.length > 0) {
+      const productIds = products.map(p => p.pid)
+      
+      // Get discount information
+      const { data: discountData } = await supabase
+        .from("applies_to")
+        .select(`
+          pid,
+          discount_campaigns (
+            did,
+            rate
+          )
+        `)
+        .in("pid", productIds)
+
+      // Create discount map (pid -> highest discount rate)
+      const discountMap: Record<number, { rate: number; campaign_id: number }> = {}
+      discountData?.forEach((item: any) => {
+        const rate = item.discount_campaigns?.rate || 0
+        const did = item.discount_campaigns?.did
+        
+        // If product has multiple discounts, keep the highest
+        if (!discountMap[item.pid] || discountMap[item.pid].rate < rate) {
+          discountMap[item.pid] = { rate, campaign_id: did }
+        }
+      })
+
+      // Add discount information to products
+      products = products.map(p => ({
+        ...p,
+        discount_rate: discountMap[p.pid]?.rate || null,
+        discount_campaign_id: discountMap[p.pid]?.campaign_id || null,
+        discounted_price: discountMap[p.pid] 
+          ? Number((p.price * (1 - discountMap[p.pid].rate)).toFixed(2))
+          : null,
+        has_discount: !!discountMap[p.pid]
+      }))
+    }
+
     return NextResponse.json({ products })
   } catch (error) {
     console.error("[Group9] Unexpected error:", error)
