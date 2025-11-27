@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { ArrowLeft } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { getSupabaseBrowserClient } from "@/lib/supabase/client"
 
 export default function CheckoutPage() {
   const router = useRouter()
@@ -36,10 +37,19 @@ export default function CheckoutPage() {
     setLoading(true)
 
     try {
+      // Check if user is logged in (client-side check)
+      const supabase = getSupabaseBrowserClient()
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      
+      console.log("[Group9] Client-side: User check before order:", user?.id || "NOT LOGGED IN")
+
       // Create order
       const response = await fetch("/api/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include", // Include cookies so server can read session
         body: JSON.stringify({
           items,
           total: totalPrice,
@@ -51,6 +61,7 @@ export default function CheckoutPage() {
       })
 
       const data = await response.json()
+      console.log("[Group9] Client-side: Order response:", data)
 
       if (data.error) {
         toast({

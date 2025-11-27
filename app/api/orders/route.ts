@@ -12,9 +12,23 @@ export async function POST(request: Request) {
 
     const supabase = await getSupabaseServerClient()
 
-    // For demo purposes, create a guest user or use existing
-    // In production, this would use authenticated user
-    const userId = null
+    // Get authenticated user from session
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser()
+    
+    const userId = user?.id || null
+    
+    if (userError) {
+      console.error("[Group9] Error getting user:", userError)
+    }
+    
+    if (!userId) {
+      console.warn("[Group9] No authenticated user found - order will be created without user_id")
+    } else {
+      console.log("[Group9] Creating order for user:", userId)
+    }
 
     // Create order
     const { data: order, error: orderError } = await supabase
@@ -37,7 +51,7 @@ export async function POST(request: Request) {
     // Create order items
     const orderItems = items.map((item: any) => ({
       order_id: order.id,
-      product_id: item.product_id,
+      product_id: parseInt(item.product_id, 10), // Convert string to integer for products_belong_to.pid
       quantity: item.quantity,
       price: item.price,
     }))

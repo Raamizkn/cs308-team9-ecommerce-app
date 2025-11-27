@@ -175,51 +175,38 @@ export default function DiscountCampaignsPage() {
 
     setCreating(true)
     try {
-      const supabase = getSupabaseBrowserClient()
-      
       // Convert percentage to rate (0-1)
       const rate = discount / 100
 
-      // Create discount campaign
-      const { data: campaign, error: campaignError } = await supabase
-        .from("discount_campaigns")
-        .insert({
+      // Call the backend API to create discount and notify users
+      const response = await fetch("/api/sales-manager/discounts", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({
           rate: rate,
-        })
-        .select()
-        .single()
-
-      if (campaignError) throw campaignError
-
-      // Use the apply_discount_to_products function to link products
-      const { error: applyError } = await supabase.rpc("apply_discount_to_products", {
-        target_did: campaign.did,
-        target_pids: selectedProducts,
+          product_ids: selectedProducts,
+        }),
       })
 
-      if (applyError) {
-        console.error("[Group9] Error applying discount:", applyError)
-        throw applyError
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to create discount campaign")
       }
 
-      // Get users who have these products in their wishlist
-      const { data: wishlistUsers, error: wishlistError } = await supabase
-        .from("wish_for")
-        .select("uid, pid")
-        .in("pid", selectedProducts)
-
-      if (!wishlistError && wishlistUsers && wishlistUsers.length > 0) {
-        // Get unique user IDs
-        const uniqueUserIds = [...new Set(wishlistUsers.map((w: any) => w.uid))]
-        
+      // Show success message with notification count
+      if (data.notified_users_count > 0) {
         toast({
           title: "Campaign created & users notified",
-          description: `${discount}% discount applied to ${selectedProducts.length} product(s). ${uniqueUserIds.length} user(s) with these items in their wishlist have been notified.`,
+          description: `${discount}% discount applied to ${data.products_count} product(s). ${data.notified_users_count} user(s) with these items in their wishlist have been notified.`,
         })
       } else {
         toast({
           title: "Campaign created",
-          description: `${discount}% discount applied to ${selectedProducts.length} product(s).`,
+          description: `${discount}% discount applied to ${data.products_count} product(s).`,
         })
       }
 

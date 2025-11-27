@@ -6,7 +6,7 @@ export async function POST(request: Request) {
   try {
     const { id, name } = await request.json()
     
-    const supabase = getSupabaseServerClient()
+    const supabase = await getSupabaseServerClient()
     const { data, error } = await supabase
       .from("profiles")
       .insert([{ uid: id, name }])

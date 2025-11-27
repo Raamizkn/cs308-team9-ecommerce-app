@@ -70,13 +70,26 @@ export default function OrdersPage() {
       } = await supabase.auth.getUser()
 
       if (user) {
-        const { data } = await supabase
+        // First try with join, if it fails, try without
+        const { data, error } = await supabase
           .from("orders")
-          .select("*, order_items(*, products(*))")
+          .select("*, order_items(*, products_belong_to(*))")
           .eq("user_id", user.id)
           .order("created_at", { ascending: false })
 
-        setOrders(data || [])
+        if (error) {
+          console.error("[Group9] Error with join, trying without:", error)
+          // Fallback: get orders without product details
+          const { data: ordersOnly } = await supabase
+            .from("orders")
+            .select("*")
+            .eq("user_id", user.id)
+            .order("created_at", { ascending: false })
+          
+          setOrders(ordersOnly || [])
+        } else {
+          setOrders(data || [])
+        }
       }
     } catch (error) {
       console.error("[Group9] Error fetching orders:", error)

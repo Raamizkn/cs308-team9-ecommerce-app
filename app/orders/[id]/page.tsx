@@ -42,7 +42,7 @@ export default function OrderDetailPage() {
       const supabase = getSupabaseBrowserClient()
       const { data } = await supabase
         .from("orders")
-        .select("*, order_items(*, products(*))")
+        .select("*, order_items(*, products_belong_to(*))")
         .eq("id", params.id)
         .single()
 
