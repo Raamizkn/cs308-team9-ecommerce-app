@@ -2,17 +2,13 @@
 BEGIN;
 
 
--- =========================================================
--- DEFINE TESTS INSIDE A TEMPORARY FUNCTION
--- =========================================================
+-- Define tests inside a temporary function
 CREATE OR REPLACE FUNCTION public.test_logic() RETURNS SETOF TEXT AS $$
 BEGIN
     -- Plan the 5 tests
     RETURN NEXT plan(5);
 
-    -- -----------------------------------------------------
-    -- SETUP DATA
-    -- -----------------------------------------------------
+    -- Data setup
     INSERT INTO public.products_belong_to (name, price, stock_quantity, product_cost, cid)
     VALUES ('Test Product No Cost', 100.00, 10, NULL, 1);
 
@@ -21,9 +17,7 @@ BEGIN
 
     INSERT INTO public.discount_campaigns (rate) VALUES (0.25);
 
-    -- -----------------------------------------------------
-    -- RUN TESTS
-    -- -----------------------------------------------------
+    -- run tests
 
     -- Test 1
     RETURN NEXT results_eq(
@@ -71,10 +65,8 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- =========================================================
--- EXECUTE TESTS DIRECTLY
+-- EXECUTE 
 -- This forces Supabase to show every line of output in the results table
--- =========================================================
 SELECT * FROM public.test_logic();
 
 -- Rollback everything
