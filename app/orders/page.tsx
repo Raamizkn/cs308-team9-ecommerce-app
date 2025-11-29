@@ -350,50 +350,62 @@ export default function OrdersPage() {
                               (() => {
                                 const summary = refundSummaryByItem[item.id]
                                 const remaining = remainingRefundableQty(item.id, item.quantity)
-                                if (summary?.approved && summary.approved >= item.quantity) {
+                                const pendingQty = summary?.pending ?? 0
+                                const approvedQty = summary?.approved ?? 0
+                                
+                                // Show fully refunded if all items are approved
+                                if (approvedQty >= item.quantity) {
                                   return <p className="text-xs text-green-600 mt-1">Fully refunded</p>
                                 }
-                                const pendingQty = summary?.pending ?? 0
-                                if (pendingQty > 0 && remaining === 0) {
-                                  return (
-                                    <p className="text-xs text-[#ff9800] mt-1">
-                                      Refund request pending ({pendingQty} item{pendingQty > 1 ? "s" : ""})
-                                    </p>
-                                  )
-                                }
-                                if (remaining <= 0) {
-                                  return (
-                                    <p className="text-xs text-[#ff9800] mt-1">
-                                      Refund request pending ({pendingQty} item{pendingQty > 1 ? "s" : ""})
-                                    </p>
-                                  )
-                                }
+                                
+                                // Show refund controls with pending/approved info
                                 return (
-                                  <div className="mt-2 flex flex-wrap items-center gap-2">
-                                    <select
-                                      className="border border-black px-2 py-1 text-xs"
-                                      value={selectedQty[item.id] ?? 1}
-                                      onChange={(e) =>
-                                        setSelectedQty((prev) => ({
-                                          ...prev,
-                                          [item.id]: Number(e.target.value),
-                                        }))
-                                      }
-                                    >
-                                      {Array.from({ length: remaining }, (_, i) => i + 1).map((qty) => (
-                                        <option key={qty} value={qty}>
-                                          {qty}
-                                        </option>
-                                      ))}
-                                    </select>
-                                    <Button
-                                      size="sm"
-                                      className="bg-[#ffb347] hover:bg-[#ffd93d] text-black border-4 border-black"
-                                      disabled={submittingItem === item.id}
-                                      onClick={() => handleRequestRefund(order.id, item.id)}
-                                    >
-                                      {submittingItem === item.id ? "Submitting..." : "Request Refund"}
-                                    </Button>
+                                  <div className="mt-2 space-y-1">
+                                    {/* Show pending refund info if exists */}
+                                    {pendingQty > 0 && (
+                                      <p className="text-xs text-[#ff9800] font-semibold">
+                                        ⏳ Refund request pending: {pendingQty} item{pendingQty > 1 ? "s" : ""} awaiting review
+                                      </p>
+                                    )}
+                                    {/* Show approved refund info if exists */}
+                                    {approvedQty > 0 && (
+                                      <p className="text-xs text-green-600 font-semibold">
+                                        ✓ {approvedQty} item{approvedQty > 1 ? "s" : ""} refunded
+                                      </p>
+                                    )}
+                                    {/* Show refund controls if there's remaining quantity */}
+                                    {remaining > 0 ? (
+                                      <div className="flex flex-wrap items-center gap-2">
+                                        <select
+                                          className="border border-black px-2 py-1 text-xs"
+                                          value={selectedQty[item.id] ?? 1}
+                                          onChange={(e) =>
+                                            setSelectedQty((prev) => ({
+                                              ...prev,
+                                              [item.id]: Number(e.target.value),
+                                            }))
+                                          }
+                                        >
+                                          {Array.from({ length: remaining }, (_, i) => i + 1).map((qty) => (
+                                            <option key={qty} value={qty}>
+                                              {qty}
+                                            </option>
+                                          ))}
+                                        </select>
+                                        <Button
+                                          size="sm"
+                                          className="bg-[#ffb347] hover:bg-[#ffd93d] text-black border-4 border-black"
+                                          disabled={submittingItem === item.id}
+                                          onClick={() => handleRequestRefund(order.id, item.id)}
+                                        >
+                                          {submittingItem === item.id ? "Submitting..." : "Request Refund"}
+                                        </Button>
+                                      </div>
+                                    ) : pendingQty > 0 ? (
+                                      <p className="text-xs text-[#ff9800] mt-1">
+                                        All items have refund requests pending review
+                                      </p>
+                                    ) : null}
                                   </div>
                                 )
                               })()

@@ -409,6 +409,7 @@ export default function RefundRequestsPage() {
                         <div className="font-bold text-[#1a1a3e]">{refund.product_name}</div>
                         <div className="text-sm text-[#6c757d]">Quantity: {refund.quantity}</div>
                       </div>
+
                     </div>
 
                     {refund.reason && (
@@ -454,4 +455,5 @@ export default function RefundRequestsPage() {
     </div>
   )
 }
+
 
