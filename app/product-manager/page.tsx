@@ -1,6 +1,7 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { PixelHeader } from "@/components/pixel-header"
 import { Button } from "@/components/ui/button"
@@ -8,7 +9,8 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast"
-import { ArrowLeft, ClipboardList, PackageCheck, PlusCircle, X } from "lucide-react"
+import { getSupabaseBrowserClient } from "@/lib/supabase/client"
+import { ArrowLeft, ClipboardList, PackageCheck, PlusCircle, X, LogOut } from "lucide-react"
 
 interface ProductRecord {
   pid: number
@@ -144,52 +146,218 @@ const mockInvoices: InvoiceRecord[] = [
   },
 ]
 
-const mockCategories = ["Consoles", "Accessories", "Collectibles", "Home"]
-
 export default function ProductManagerDashboardPage() {
+  const router = useRouter()
   const { toast } = useToast()
-  const [products, setProducts] = useState<ProductRecord[]>(mockProducts)
-  const [categories, setCategories] = useState<string[]>(mockCategories)
+  const [products, setProducts] = useState<ProductRecord[]>([])
+  const [categories, setCategories] = useState<string[]>([])
   const [deliveries, setDeliveries] = useState<DeliveryRecord[]>(mockDeliveries)
   const [invoices] = useState<InvoiceRecord[]>(mockInvoices)
+  const [loading, setLoading] = useState(true)
+  const [loadingCategories, setLoadingCategories] = useState(true)
+  const [user, setUser] = useState<any>(null)
+  const [checkingAccess, setCheckingAccess] = useState(true)
 
   const [stockEdits, setStockEdits] = useState<Record<number, string>>({})
   const [newCategory, setNewCategory] = useState("")
   const [newProduct, setNewProduct] = useState({
     name: "",
     sku: "",
-    category: mockCategories[0],
+    category: "",
     price: "",
     stock: "",
     reorderPoint: "",
-    warehouse: "Central",
+    distributor: "Spin Master",
     description: "",
+    model: "",
+    warranty: "",
   })
 
-  const handleStockUpdate = (pid: number) => {
+  // Check product manager access on mount
+  useEffect(() => {
+    checkProductManagerAccess()
+  }, [])
+
+  const checkProductManagerAccess = async () => {
+    try {
+      const supabase = getSupabaseBrowserClient()
+      const {
+        data: { user: authUser },
+      } = await supabase.auth.getUser()
+
+      if (!authUser) {
+        router.push("/login")
+        return
+      }
+
+      // Check if user is a product manager
+      const { data: productManagerData, error: roleError } = await supabase
+        .from("product_managers")
+        .select("uid")
+        .eq("uid", authUser.id)
+        .maybeSingle()
+
+      if (roleError || !productManagerData) {
+        router.push("/login")
+        return
+      }
+
+      // Get user profile
+      const { data: profileData } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("uid", authUser.id)
+        .single()
+
+      setUser({
+        ...authUser,
+        name: profileData?.name || authUser.email?.split("@")[0] || "Product Manager",
+      })
+
+      // Fetch products after access is confirmed
+      fetchProducts()
+    } catch (error) {
+      console.error("[Group9] Error checking product manager access:", error)
+      router.push("/login")
+    } finally {
+      setCheckingAccess(false)
+    }
+  }
+
+  const fetchProducts = async () => {
+    try {
+      setLoading(true)
+      const response = await fetch("/api/product-manager/products")
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || "Failed to fetch products")
+      }
+      const data = await response.json()
+      setProducts(data.products || [])
+    } catch (error) {
+      console.error("[Group9] Error fetching products:", error)
+      toast({
+        title: "Error loading products",
+        description: error instanceof Error ? error.message : "Failed to fetch products",
+        variant: "destructive",
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleLogout = async () => {
+    try {
+      const supabase = getSupabaseBrowserClient()
+      const { error } = await supabase.auth.signOut()
+
+      if (error) {
+        toast({
+          title: "Logout failed",
+          description: error.message,
+          variant: "destructive",
+        })
+        return
+      }
+
+      toast({
+        title: "Logged out",
+        description: "You have been successfully logged out",
+      })
+
+      router.push("/login")
+      router.refresh()
+    } catch (error) {
+      console.error("[Group9] Logout error:", error)
+      toast({
+        title: "Logout failed",
+        description: "Something went wrong. Please try again.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  // Fetch categories on mount
+  useEffect(() => {
+    const fetchCategories = async () => {
+      try {
+        setLoadingCategories(true)
+        const response = await fetch("/api/categories")
+        if (!response.ok) {
+          const error = await response.json()
+          throw new Error(error.error || "Failed to fetch categories")
+        }
+        const data = await response.json()
+        const categoryNames = (data.categories || []).map((cat: { name: string }) => cat.name)
+        setCategories(categoryNames)
+        // Set default category if available
+        if (categoryNames.length > 0 && !newProduct.category) {
+          setNewProduct((prev) => ({ ...prev, category: categoryNames[0] }))
+        }
+      } catch (error) {
+        console.error("[Group9] Error fetching categories:", error)
+        toast({
+          title: "Error loading categories",
+          description: error instanceof Error ? error.message : "Failed to fetch categories",
+          variant: "destructive",
+        })
+      } finally {
+        setLoadingCategories(false)
+      }
+    }
+
+    fetchCategories()
+  }, [toast])
+
+  const handleStockUpdate = async (pid: number) => {
     const amount = Number(stockEdits[pid])
 
-    if (isNaN(amount)) {
+    if (isNaN(amount) || amount === 0) {
       toast({
         title: "Invalid adjustment",
-        description: "Enter a numeric value to increase or decrease stock",
+        description: "Enter a non-zero numeric value to increase or decrease stock",
         variant: "destructive",
       })
       return
     }
 
-    setProducts((prev) =>
-      prev.map((product) =>
-        product.pid === pid ? { ...product, stock: Math.max(0, product.stock + amount) } : product,
-      ),
-    )
+    try {
+      const response = await fetch(`/api/product-manager/products/${pid}/stock`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ adjustment: amount }),
+      })
 
-    setStockEdits((prev) => ({ ...prev, [pid]: "" }))
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || "Failed to update stock")
+      }
 
-    toast({
-      title: "Stock updated",
-      description: "Stock change queued for backend sync",
-    })
+      const data = await response.json()
+
+      // Update local state
+      setProducts((prev) =>
+        prev.map((product) =>
+          product.pid === pid ? { ...product, stock: data.stock } : product,
+        ),
+      )
+
+      setStockEdits((prev) => ({ ...prev, [pid]: "" }))
+
+      toast({
+        title: "Stock updated",
+        description: `Stock successfully ${amount > 0 ? "increased" : "decreased"} by ${Math.abs(amount)} units`,
+      })
+    } catch (error) {
+      console.error("[Group9] Error updating stock:", error)
+      toast({
+        title: "Error updating stock",
+        description: error instanceof Error ? error.message : "Failed to update stock",
+        variant: "destructive",
+      })
+    }
   }
 
   const handleAddCategory = () => {
@@ -221,13 +389,37 @@ export default function ProductManagerDashboardPage() {
     })
   }
 
-  const handleRemoveProduct = (pid: number) => {
-    setProducts((prev) => prev.filter((product) => product.pid !== pid))
-    toast({
-      title: "Product removed",
-      description: "Remember to sync this deletion with the backend",
-      variant: "destructive",
-    })
+  const handleRemoveProduct = async (pid: number) => {
+    if (!confirm("Are you sure you want to remove this product? This action cannot be undone.")) {
+      return
+    }
+
+    try {
+      const response = await fetch(`/api/product-manager/products/${pid}`, {
+        method: "DELETE",
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || "Failed to remove product")
+      }
+
+      // Update local state
+      setProducts((prev) => prev.filter((product) => product.pid !== pid))
+
+      toast({
+        title: "Product removed",
+        description: "Product has been successfully removed from the database",
+        variant: "destructive",
+      })
+    } catch (error) {
+      console.error("[Group9] Error removing product:", error)
+      toast({
+        title: "Error removing product",
+        description: error instanceof Error ? error.message : "Failed to remove product",
+        variant: "destructive",
+      })
+    }
   }
 
   const handleDeliveryStatus = (id: string, status: DeliveryRecord["status"]) => {
@@ -238,13 +430,13 @@ export default function ProductManagerDashboardPage() {
     })
   }
 
-  const handleCreateProduct = () => {
-    const { name, sku, category, price, stock, reorderPoint, warehouse } = newProduct
+  const handleCreateProduct = async () => {
+    const { name, sku, category, price, stock, distributor, description, model, warranty } = newProduct
 
-    if (!name || !sku || !price || !stock || !reorderPoint) {
+    if (!name || !price || stock === undefined || !category) {
       toast({
         title: "Missing information",
-        description: "Name, SKU, price, stock, and reorder point are required",
+        description: "Name, price, stock, and category are required",
         variant: "destructive",
       })
       return
@@ -252,44 +444,82 @@ export default function ProductManagerDashboardPage() {
 
     const parsedStock = Number(stock)
     const parsedPrice = Number(price)
-    const parsedReorder = Number(reorderPoint)
 
-    if ([parsedStock, parsedPrice, parsedReorder].some((num) => isNaN(num) || num < 0)) {
+    if (isNaN(parsedStock) || isNaN(parsedPrice) || parsedStock < 0 || parsedPrice < 0) {
       toast({
         title: "Invalid values",
-        description: "Use positive numbers for price, stock, and reorder point",
+        description: "Price and stock must be non-negative numbers",
         variant: "destructive",
       })
       return
     }
 
-    const nextProduct: ProductRecord = {
-      pid: Date.now(),
-      name,
-      sku,
-      category,
-      stock: parsedStock,
-      reorderPoint: parsedReorder,
-      price: parsedPrice,
-      warehouse,
+    try {
+      const response = await fetch("/api/product-manager/products", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name,
+          sku: sku || null,
+          category,
+          price: parsedPrice,
+          stock: parsedStock,
+          distributor_info: distributor,
+          description: description || null,
+          model: model || null,
+          warranty_status: warranty || null,
+        }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || "Failed to create product")
+      }
+
+      const data = await response.json()
+
+      // Add new product to local state
+      setProducts((prev) => [data.product, ...prev])
+
+      // Reset form
+      setNewProduct({
+        name: "",
+        sku: "",
+        category,
+        price: "",
+        stock: "",
+        reorderPoint: "",
+        distributor: "Spin Master",
+        description: "",
+        model: "",
+        warranty: "",
+      })
+
+      toast({
+        title: "Product created",
+        description: `${name} has been successfully added to the database`,
+      })
+    } catch (error) {
+      console.error("[Group9] Error creating product:", error)
+      toast({
+        title: "Error creating product",
+        description: error instanceof Error ? error.message : "Failed to create product",
+        variant: "destructive",
+      })
     }
+  }
 
-    setProducts((prev) => [nextProduct, ...prev])
-    setNewProduct({
-      name: "",
-      sku: "",
-      category,
-      price: "",
-      stock: "",
-      reorderPoint: "",
-      warehouse,
-      description: "",
-    })
-
-    toast({
-      title: "Product drafted",
-      description: "Hook this action to `/api/product-manager/products`",
-    })
+  if (checkingAccess) {
+    return (
+      <div className="min-h-screen bg-[#f8f9fa]">
+        <PixelHeader />
+        <div className="flex items-center justify-center py-20">
+          <div className="inline-block w-16 h-16 border-4 border-black border-t-[#4ecdc4] rounded-full animate-spin" />
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -297,23 +527,31 @@ export default function ProductManagerDashboardPage() {
       <PixelHeader />
       <main className="container mx-auto px-4 py-10">
         <div className="mb-8">
-          <Link href="/admin">
-            <Button className="bg-white border-4 border-black text-black hover:bg-[#e9ecef] font-bold mb-4">
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              BACK TO ADMIN
-            </Button>
-          </Link>
-          <h1 className="font-[family-name:var(--font-pixel)] text-4xl text-[#1a1a3e] mb-2">
-            PRODUCT MANAGER CONTROL ROOM
-          </h1>
-          <p className="text-[#6c757d] font-semibold">Manage catalog, categories, deliveries, and review approvals</p>
-        </div>
-
-        <div className="bg-[#fff3cd] border-4 border-black p-4 pixel-shadow-sm mb-10">
-          <p className="text-sm font-bold text-[#856404]">
-            Frontend-Only Notice: Each widget maps to requirement #12. Replace mock state with Supabase queries and secure
-            RPC calls when backend endpoints are ready.
-          </p>
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h1 className="font-[family-name:var(--font-pixel)] text-4xl text-[#1a1a3e] mb-2">
+                PRODUCT MANAGER CONTROL ROOM
+              </h1>
+              <p className="text-[#6c757d] font-semibold">
+                Welcome back, {user?.name || "Product Manager"}
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              <Button
+                onClick={handleLogout}
+                className="bg-white border-4 border-black text-black hover:bg-[#e9ecef] font-bold"
+              >
+                <LogOut className="h-4 w-4 mr-2" />
+                LOGOUT
+              </Button>
+              <Link href="/">
+                <Button className="bg-white border-4 border-black text-black hover:bg-[#e9ecef] font-bold">
+                  <ArrowLeft className="h-4 w-4 mr-2" />
+                  Back to Store
+                </Button>
+              </Link>
+            </div>
+          </div>
         </div>
 
         {/* Inventory Management */}
@@ -322,9 +560,18 @@ export default function ProductManagerDashboardPage() {
             <h2 className="font-[family-name:var(--font-pixel)] text-3xl text-[#1a1a3e]">Inventory & Stock Control</h2>
             <p className="text-[#6c757d]">Adjust stock counts or remove products entirely.</p>
           </div>
-          <div className="divide-y-2 divide-black">
-            {products.map((product) => {
-              const isLow = product.stock <= product.reorderPoint
+          {loading ? (
+            <div className="p-6 text-center text-[#6c757d]">
+              Loading products...
+            </div>
+          ) : products.length === 0 ? (
+            <div className="p-6 text-center text-[#6c757d]">
+              No products found. Add your first product below.
+            </div>
+          ) : (
+            <div className="divide-y-2 divide-black">
+              {products.map((product) => {
+              const isLow = product.stock <= 10 // Low stock threshold
               return (
                 <div key={product.pid} className="p-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                   <div>
@@ -341,10 +588,9 @@ export default function ProductManagerDashboardPage() {
                       )}
                     </div>
                     <p className="text-sm text-[#6c757d] font-mono">SKU: {product.sku} • {product.category}</p>
-                    <p className="text-sm text-[#6c757d]">Warehouse: {product.warehouse}</p>
+                    <p className="text-sm text-[#6c757d]">Distributor: {product.warehouse}</p>
                     <div className="mt-3 flex flex-wrap gap-4 text-sm font-bold text-[#1a1a3e]">
                       <span>Stock: {product.stock} units</span>
-                      <span>Reorder at: {product.reorderPoint}</span>
                       <span>Price: ${product.price.toFixed(2)}</span>
                     </div>
                   </div>
@@ -376,7 +622,8 @@ export default function ProductManagerDashboardPage() {
                 </div>
               )
             })}
-          </div>
+            </div>
+          )}
         </section>
 
         {/* New Product */}
@@ -403,9 +650,10 @@ export default function ProductManagerDashboardPage() {
                 <Select
                   value={newProduct.category}
                   onValueChange={(value) => setNewProduct({ ...newProduct, category: value })}
+                  disabled={loadingCategories}
                 >
                   <SelectTrigger className="border-2 border-black bg-[#f8f9fa]">
-                    <SelectValue placeholder="Category" />
+                    <SelectValue placeholder={loadingCategories ? "Loading categories..." : "Category"} />
                   </SelectTrigger>
                   <SelectContent>
                     {categories.map((category) => (
@@ -416,22 +664,22 @@ export default function ProductManagerDashboardPage() {
                   </SelectContent>
                 </Select>
                 <Select
-                  value={newProduct.warehouse}
-                  onValueChange={(value) => setNewProduct({ ...newProduct, warehouse: value })}
+                  value={newProduct.distributor}
+                  onValueChange={(value) => setNewProduct({ ...newProduct, distributor: value })}
                 >
                   <SelectTrigger className="border-2 border-black bg-[#f8f9fa]">
-                    <SelectValue placeholder="Warehouse" />
+                    <SelectValue placeholder="Distributor" />
                   </SelectTrigger>
                   <SelectContent>
-                    {["Central", "East Hub", "West Hub"].map((warehouse) => (
-                      <SelectItem key={warehouse} value={warehouse}>
-                        {warehouse}
+                    {["Spin Master", "CD Projekt Red", "The Pokemon Company", "Wizarding World Inc."].map((distributor) => (
+                      <SelectItem key={distributor} value={distributor}>
+                        {distributor}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <Input
                   type="number"
                   placeholder="Price"
@@ -446,16 +694,21 @@ export default function ProductManagerDashboardPage() {
                   onChange={(event) => setNewProduct({ ...newProduct, stock: event.target.value })}
                   className="border-2 border-black bg-[#f8f9fa]"
                 />
-                <Input
-                  type="number"
-                  placeholder="Reorder point"
-                  value={newProduct.reorderPoint}
-                  onChange={(event) => setNewProduct({ ...newProduct, reorderPoint: event.target.value })}
-                  className="border-2 border-black bg-[#f8f9fa]"
-                />
               </div>
+              <Input
+                placeholder="Model"
+                value={newProduct.model}
+                onChange={(event) => setNewProduct({ ...newProduct, model: event.target.value })}
+                className="border-2 border-black bg-[#f8f9fa]"
+              />
+              <Input
+                placeholder="Warranty Status"
+                value={newProduct.warranty}
+                onChange={(event) => setNewProduct({ ...newProduct, warranty: event.target.value })}
+                className="border-2 border-black bg-[#f8f9fa]"
+              />
               <Textarea
-                placeholder="Internal notes / launch plan"
+                placeholder="Description"
                 value={newProduct.description}
                 onChange={(event) => setNewProduct({ ...newProduct, description: event.target.value })}
                 className="border-2 border-black bg-[#f8f9fa]"

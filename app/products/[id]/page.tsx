@@ -42,21 +42,19 @@ interface Product {
 }
 
 interface Review {
+  id?: string
   review_id: string
+  productId?: number
+  productName?: string
+  customerId?: string
+  customerName?: string
   rating: number
   comment: string
+  status?: "pending" | "approved" | "rejected"
   created_at: string
-  is_approved: boolean
-  profiles: { name: string }
-}
-
-interface Review {
-  review_id: string
-  rating: number
-  comment: string
-  created_at: string
-  is_approved: boolean
-  profiles: { name: string }
+  createdAt?: string
+  is_approved?: boolean
+  profiles?: { name: string }
 }
 
 export default function ProductDetailPage() {
@@ -65,11 +63,14 @@ export default function ProductDetailPage() {
   const { addItem } = useCart()
   const { toast } = useToast()
   const [product, setProduct] = useState<Product | null>(null)
+  const [reviews, setReviews] = useState<Review[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadingReviews, setLoadingReviews] = useState(true)
   const [quantity, setQuantity] = useState(1)
 
   useEffect(() => {
     fetchProduct()
+    fetchReviews()
   }, [params.id])
 
   const fetchProduct = async () => {
@@ -97,6 +98,24 @@ export default function ProductDetailPage() {
       })
     } finally {
       setLoading(false)
+    }
+  }
+
+  const fetchReviews = async () => {
+    try {
+      setLoadingReviews(true)
+      const response = await fetch(`/api/reviews?product_id=${params.id}`)
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || "Failed to fetch reviews")
+      }
+      const data = await response.json()
+      setReviews(data.reviews || [])
+    } catch (error) {
+      console.error("[Group9] Error fetching reviews:", error)
+      // Don't show error toast for reviews, just log it
+    } finally {
+      setLoadingReviews(false)
     }
   }
 
@@ -165,8 +184,15 @@ export default function ProductDetailPage() {
     )
   }
 
-  const rating = product.rating || 4
-  const reviewCount = product.review_count || 0
+  // Calculate average rating from approved reviews
+  const approvedReviews = reviews.filter((r) => 
+    r.status === "approved" || r.is_approved === true
+  )
+  const averageRating = approvedReviews.length > 0
+    ? approvedReviews.reduce((sum, r) => sum + r.rating, 0) / approvedReviews.length
+    : product.rating || 0
+  const reviewCount = approvedReviews.length || product.review_count || 0
+  const rating = averageRating
   const isLowStock = product.stock_quantity < 20 && product.stock_quantity > 0
   const isOutOfStock = product.stock_quantity === 0
   const displayPrice = product.has_discount && product.discounted_price ? product.discounted_price : product.price
@@ -416,45 +442,55 @@ export default function ProductDetailPage() {
                 </Button>
               </div>
 
-              {/* Reviews List - Mock for now */}
+              {/* Reviews List */}
               <div className="space-y-4">
-                <div className="p-4 border-2 border-black bg-[#f8f9fa]">
-                  <div className="flex items-start justify-between mb-2">
-                    <div>
-                      <div className="flex items-center gap-2 mb-1">
-                        <div className="flex items-center gap-1">
-                          {[...Array(5)].map((_, i) => (
-                            <Star
-                              key={i}
-                              className={`h-4 w-4 ${i < 5 ? "fill-[#ffd93d] text-[#ffd93d]" : "fill-none text-gray-400"}`}
-                            />
-                          ))}
+                {loadingReviews ? (
+                  <div className="text-center p-8">
+                    <div className="inline-block w-8 h-8 border-4 border-black border-t-[#ffb347] rounded-full animate-spin" />
+                  </div>
+                ) : approvedReviews.length === 0 ? (
+                  <div className="text-center p-8 border-2 border-dashed border-[#6c757d]">
+                    <MessageSquare className="h-12 w-12 text-[#6c757d] mx-auto mb-3" />
+                    <p className="text-[#6c757d] font-semibold">
+                      No reviews yet. Be the first to review this product!
+                    </p>
+                  </div>
+                ) : (
+                  approvedReviews.map((review) => (
+                    <div key={review.review_id} className="p-4 border-2 border-black bg-[#f8f9fa]">
+                      <div className="flex items-start justify-between mb-2">
+                        <div>
+                          <div className="flex items-center gap-2 mb-1">
+                            <div className="flex items-center gap-1">
+                              {[...Array(5)].map((_, i) => (
+                                <Star
+                                  key={i}
+                                  className={`h-4 w-4 ${
+                                    i < review.rating
+                                      ? "fill-[#ffd93d] text-[#ffd93d]"
+                                      : "fill-none text-gray-400"
+                                  }`}
+                                />
+                              ))}
+                            </div>
+                            <span className="font-bold text-[#1a1a3e]">
+                              {review.profiles?.name || "Anonymous"}
+                            </span>
+                          </div>
+                          <p className="text-xs text-[#6c757d]">Verified Purchase</p>
                         </div>
-                        <span className="font-bold text-[#1a1a3e]">Sample User</span>
+                        <span className="text-xs text-[#6c757d]">
+                          {new Date(review.created_at || review.createdAt || "").toLocaleDateString("en-US", {
+                            year: "numeric",
+                            month: "short",
+                            day: "numeric",
+                          })}
+                        </span>
                       </div>
-                      <p className="text-xs text-[#6c757d]">Verified Purchase</p>
+                      <p className="text-[#1a1a3e]">{review.comment}</p>
                     </div>
-                    <span className="text-xs text-[#6c757d]">2 days ago</span>
-                  </div>
-                  <p className="text-[#1a1a3e]">
-                    This is a sample review. Real reviews will appear here once you connect the backend API.
-                    Reviews require product manager approval before being visible.
-                  </p>
-                  <div className="mt-2 flex items-center gap-2">
-                    <ThumbsUp className="h-4 w-4 text-[#6c757d]" />
-                    <span className="text-xs text-[#6c757d] font-semibold">Helpful (12)</span>
-                  </div>
-                </div>
-
-                <div className="text-center p-8 border-2 border-dashed border-[#6c757d]">
-                  <MessageSquare className="h-12 w-12 text-[#6c757d] mx-auto mb-3" />
-                  <p className="text-[#6c757d] font-semibold">
-                    No reviews yet. Be the first to review this product!
-                  </p>
-                  <p className="text-sm text-[#6c757d] mt-2">
-                    Backend API ready - just needs to be connected to display real reviews
-                  </p>
-                </div>
+                  ))
+                )}
               </div>
             </div>
           </div>

@@ -79,9 +79,9 @@ export default function LoginPage() {
       } else if (!productManagerError && productManager) {
         toast({
           title: "Welcome back!",
-          description: "You have successfully logged in",
+          description: "You have successfully logged in as Product Manager",
         })
-        router.push("/admin")
+        router.push("/product-manager")
       } else if (!supportAgentError && supportAgent) {
         toast({
           title: "Welcome back!",

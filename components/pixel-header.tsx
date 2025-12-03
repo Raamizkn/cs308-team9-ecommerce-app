@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
-import { ShoppingCart, User, Search, Package, BarChart3 } from "lucide-react"
+import { ShoppingCart, User, Search, Package, BarChart3, Settings } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useCart } from "@/lib/cart-context"
 import { getSupabaseBrowserClient } from "@/lib/supabase/client"
@@ -11,6 +11,7 @@ export function PixelHeader() {
   const { totalItems } = useCart()
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [isSalesManager, setIsSalesManager] = useState(false)
+  const [isProductManager, setIsProductManager] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
@@ -29,6 +30,7 @@ export function PixelHeader() {
         console.error("[Group9] Auth error:", authError)
         setIsAuthenticated(false)
         setIsSalesManager(false)
+        setIsProductManager(false)
         return
       }
       
@@ -50,14 +52,33 @@ export function PixelHeader() {
           console.error("[Group9] Error checking sales manager:", error)
           setIsSalesManager(false)
         }
+
+        // Check if user is a product manager
+        try {
+          const { data: productManagerData, error: productManagerError } = await supabase
+            .from("product_managers")
+            .select("uid")
+            .eq("uid", user.id)
+            .maybeSingle()
+          
+          if (productManagerError) {
+            console.error("[Group9] Product manager check error:", productManagerError)
+          }
+          setIsProductManager(!!productManagerData)
+        } catch (error) {
+          console.error("[Group9] Error checking product manager:", error)
+          setIsProductManager(false)
+        }
       } else {
         setIsAuthenticated(false)
         setIsSalesManager(false)
+        setIsProductManager(false)
       }
     } catch (error) {
       console.error("[Group9] Error checking auth:", error)
       setIsAuthenticated(false)
       setIsSalesManager(false)
+      setIsProductManager(false)
     } finally {
       setIsLoading(false)
     }
@@ -101,7 +122,7 @@ export function PixelHeader() {
               <Search className="h-5 w-5" />
             </Button>
             
-            {/* User/Profile or Dashboard - Always visible */}
+            {/* User/Profile or Dashboard */}
             {isSalesManager ? (
               <Link href="/sales-manager/dashboard">
                 <Button
@@ -111,6 +132,17 @@ export function PixelHeader() {
                   title="Sales Manager Dashboard"
                 >
                   <BarChart3 className="h-5 w-5" />
+                </Button>
+              </Link>
+            ) : isProductManager ? (
+              <Link href="/product-manager">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="text-white hover:bg-[#3d2660] hover:text-[#ffb347] border-2 border-transparent hover:border-black"
+                  title="Product Manager Dashboard"
+                >
+                  <Settings className="h-5 w-5" />
                 </Button>
               </Link>
             ) : (
@@ -125,8 +157,8 @@ export function PixelHeader() {
               </Link>
             )}
             
-            {/* Orders - Always visible for non-sales managers */}
-            {!isSalesManager && (
+            {/* Orders - Hidden for sales managers and product managers */}
+            {!isSalesManager && !isProductManager && (
               <Link href={isAuthenticated ? "/orders" : "/login"}>
                 <Button
                   variant="ghost"
@@ -139,8 +171,8 @@ export function PixelHeader() {
               </Link>
             )}
             
-            {/* Cart - Always visible for non-sales managers */}
-            {!isSalesManager && (
+            {/* Cart - Hidden for sales managers and product managers */}
+            {!isSalesManager && !isProductManager && (
               <Link href="/cart">
                 <Button
                   variant="ghost"

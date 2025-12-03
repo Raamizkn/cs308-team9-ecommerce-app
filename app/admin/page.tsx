@@ -81,6 +81,12 @@ export default function AdminDashboard() {
         return
       }
 
+      // Redirect product managers directly to their dashboard
+      if (resolvedRole === "product_manager") {
+        router.push("/product-manager")
+        return
+      }
+
       setUser({
         id: profile.uid,
         name: profile.name,
@@ -129,7 +135,7 @@ export default function AdminDashboard() {
           )}
 
           {user?.role === "product_manager" && (
-            <Link href="/admin/products">
+            <Link href="/product-manager">
               <div className="bg-[#ffb347] border-4 border-black p-8 pixel-shadow hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all cursor-pointer">
                 <Package className="h-12 w-12 text-[#1a1a3e] mb-4" />
                 <h2 className="font-bold text-2xl text-[#1a1a3e] mb-2">PRODUCT MANAGEMENT</h2>

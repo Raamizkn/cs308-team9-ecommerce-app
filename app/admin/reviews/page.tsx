@@ -1,83 +1,138 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { PixelHeader } from "@/components/pixel-header"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/hooks/use-toast"
 import { CheckCircle, XCircle, Star, MessageSquare, ArrowLeft } from "lucide-react"
 import Link from "next/link"
 
-// Mock data - Replace with API call later
-const mockReviews = [
-  {
-    id: "1",
-    productName: "Vintage Pixel Camera",
-    productId: 1,
-    customerName: "John Doe",
-    rating: 5,
-    comment: "Absolutely love this camera! The retro design is perfect and image quality is amazing.",
-    createdAt: "2024-01-15T10:30:00Z",
-    status: "pending",
-  },
-  {
-    id: "2",
-    productName: "Retro Game Console",
-    productId: 2,
-    customerName: "Jane Smith",
-    rating: 4,
-    comment: "Great product but delivery took longer than expected. Otherwise very satisfied!",
-    createdAt: "2024-01-14T15:45:00Z",
-    status: "pending",
-  },
-  {
-    id: "3",
-    productName: "Classic Headphones",
-    productId: 3,
-    customerName: "Mike Johnson",
-    rating: 3,
-    comment: "Sound quality is good but comfort could be better.",
-    createdAt: "2024-01-13T09:20:00Z",
-    status: "pending",
-  },
-]
+interface Review {
+  id: string
+  review_id: string
+  productId: number
+  productName: string
+  customerId: string
+  customerName: string
+  rating: number
+  comment: string
+  status: "pending" | "approved" | "rejected"
+  createdAt: string
+  approvedAt?: string
+  approvedBy?: string
+}
 
 export default function ReviewApprovalPage() {
   const { toast } = useToast()
-  const [reviews, setReviews] = useState(mockReviews)
+  const [reviews, setReviews] = useState<Review[]>([])
   const [filter, setFilter] = useState<"all" | "pending" | "approved" | "rejected">("pending")
+  const [loading, setLoading] = useState(true)
 
-  const handleApprove = (reviewId: string) => {
-    // TODO: Connect to backend API
-    // await fetch(`/api/reviews/${reviewId}/approve`, { method: 'POST' })
-    
-    setReviews(reviews.map(r => 
-      r.id === reviewId ? { ...r, status: "approved" } : r
-    ))
+  const fetchReviews = useCallback(async () => {
+    try {
+      setLoading(true)
+      // Add status filter if not "all"
+      const url = filter === "all" ? "/api/reviews" : `/api/reviews?status=${filter}`
+      const response = await fetch(url)
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || "Failed to fetch reviews")
+      }
+      const data = await response.json()
+      setReviews(data.reviews || [])
+    } catch (error) {
+      console.error("[Group9] Error fetching reviews:", error)
+      toast({
+        title: "Error loading reviews",
+        description: error instanceof Error ? error.message : "Failed to fetch reviews",
+        variant: "destructive",
+      })
+    } finally {
+      setLoading(false)
+    }
+  }, [filter, toast])
 
-    toast({
-      title: "Review Approved",
-      description: "The review is now visible to customers",
-    })
+  useEffect(() => {
+    fetchReviews()
+  }, [fetchReviews])
+
+  const handleApprove = async (reviewId: string) => {
+    try {
+      const response = await fetch(`/api/reviews/${reviewId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ action: "approve" }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || "Failed to approve review")
+      }
+
+      const data = await response.json()
+
+      // Update local state
+      setReviews(reviews.map((r) =>
+        r.id === reviewId || r.review_id === reviewId
+          ? { ...r, status: "approved" as const, approvedAt: data.review.approvedAt }
+          : r
+      ))
+
+      toast({
+        title: "Review Approved",
+        description: "The review is now visible to customers",
+      })
+    } catch (error) {
+      console.error("[Group9] Error approving review:", error)
+      toast({
+        title: "Error approving review",
+        description: error instanceof Error ? error.message : "Failed to approve review",
+        variant: "destructive",
+      })
+    }
   }
 
-  const handleReject = (reviewId: string) => {
-    // TODO: Connect to backend API
-    // await fetch(`/api/reviews/${reviewId}/reject`, { method: 'POST' })
-    
-    setReviews(reviews.map(r => 
-      r.id === reviewId ? { ...r, status: "rejected" } : r
-    ))
+  const handleReject = async (reviewId: string) => {
+    try {
+      const response = await fetch(`/api/reviews/${reviewId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ action: "reject" }),
+      })
 
-    toast({
-      title: "Review Rejected",
-      description: "The review will not be visible to customers",
-      variant: "destructive",
-    })
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || "Failed to reject review")
+      }
+
+      // Update local state
+      setReviews(reviews.map((r) =>
+        r.id === reviewId || r.review_id === reviewId
+          ? { ...r, status: "rejected" as const }
+          : r
+      ))
+
+      toast({
+        title: "Review Rejected",
+        description: "The review will not be visible to customers",
+        variant: "destructive",
+      })
+    } catch (error) {
+      console.error("[Group9] Error rejecting review:", error)
+      toast({
+        title: "Error rejecting review",
+        description: error instanceof Error ? error.message : "Failed to reject review",
+        variant: "destructive",
+      })
+    }
   }
 
-  const filteredReviews = filter === "all" 
-    ? reviews 
-    : reviews.filter(r => r.status === filter)
+  // Reviews are already filtered by the API based on the filter state
+  const filteredReviews = reviews
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString("en-US", {
@@ -131,14 +186,6 @@ export default function ReviewApprovalPage() {
           </p>
         </div>
 
-        {/* API Connection Notice */}
-        <div className="bg-[#fff3cd] border-4 border-black p-4 pixel-shadow-sm mb-8">
-          <p className="text-sm font-bold text-[#856404]">
-            <MessageSquare className="inline h-4 w-4 mr-2" />
-            <strong>Frontend Ready:</strong> This page is ready to connect to your backend API. 
-            Replace mock data with API calls to `/api/reviews` endpoint.
-          </p>
-        </div>
 
         {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
@@ -209,7 +256,12 @@ export default function ReviewApprovalPage() {
 
         {/* Reviews List */}
         <div className="space-y-4">
-          {filteredReviews.length === 0 ? (
+          {loading ? (
+            <div className="bg-white border-4 border-black p-12 text-center pixel-shadow-sm">
+              <div className="inline-block w-16 h-16 border-4 border-black border-t-[#ffb347] rounded-full animate-spin mb-4" />
+              <p className="text-[#6c757d] font-semibold">Loading reviews...</p>
+            </div>
+          ) : filteredReviews.length === 0 ? (
             <div className="bg-white border-4 border-black p-12 text-center pixel-shadow-sm">
               <MessageSquare className="h-16 w-16 text-[#6c757d] mx-auto mb-4" />
               <p className="text-2xl font-bold text-[#6c757d] mb-2">No reviews found</p>
@@ -270,14 +322,14 @@ export default function ReviewApprovalPage() {
                   {review.status === "pending" && (
                     <div className="flex items-center gap-3">
                       <Button
-                        onClick={() => handleApprove(review.id)}
+                        onClick={() => handleApprove(review.review_id || review.id)}
                         className="bg-[#6bcf7f] hover:bg-[#5bb86f] text-black border-4 border-black font-bold"
                       >
                         <CheckCircle className="h-4 w-4 mr-2" />
                         APPROVE
                       </Button>
                       <Button
-                        onClick={() => handleReject(review.id)}
+                        onClick={() => handleReject(review.review_id || review.id)}
                         className="bg-[#dc3545] hover:bg-[#c82333] text-white border-4 border-black font-bold"
                       >
                         <XCircle className="h-4 w-4 mr-2" />
