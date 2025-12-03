@@ -140,22 +140,70 @@ export default function OrderDetailPage() {
 
     setDownloadingPdf(true)
     try {
+      const supabase = getSupabaseBrowserClient()
+      
+      // Fetch customer information dynamically
+      let customerName = "Customer"
+      let customerEmail = "customer@pixelvault.com"
+      
+      if (order.user_id) {
+        try {
+          // Fetch user info from API endpoint (server-side can access auth.users)
+          const response = await fetch(`/api/users?user_id=${order.user_id}`)
+          if (response.ok) {
+            const userData = await response.json()
+            if (userData.name) {
+              customerName = userData.name
+            }
+            if (userData.email) {
+              customerEmail = userData.email
+            }
+          }
+        } catch (error) {
+          console.error("[Group9] Error fetching user info:", error)
+          // Fallback: try to get from current user if it matches
+          const { data: { user: currentUser } } = await supabase.auth.getUser()
+          if (currentUser && currentUser.id === order.user_id) {
+            customerEmail = currentUser.email || customerEmail
+            if (currentUser.user_metadata?.name) {
+              customerName = currentUser.user_metadata.name
+            } else if (currentUser.email) {
+              customerName = currentUser.email.split("@")[0]
+            }
+          }
+        }
+        
+        // If we still don't have a name, try fetching from profiles directly
+        if (customerName === "Customer") {
+          const { data: profileData } = await supabase
+            .from("profiles")
+            .select("name")
+            .eq("uid", order.user_id)
+            .maybeSingle()
+          
+          if (profileData?.name) {
+            customerName = profileData.name
+          }
+        }
+      }
+
       // Calculate totals
       const subtotal = order.order_items?.reduce((sum: number, item: any) => sum + (item.price * item.quantity), 0) || 0
       const shipping = 10.00
       const tax = subtotal * 0.08
       const total = subtotal + shipping + tax
 
-      // Prepare invoice data
+      // Prepare invoice data with dynamic values
+      // Handle both products_belong_to and products field names (depending on Supabase relationship setup)
       const invoiceData = {
         orderId: order.id,
         orderDate: order.created_at,
-        customerName: order.customer_name || "Customer",
-        customerEmail: order.customer_email || "customer@pixelvault.com",
+        customerName: customerName,
+        customerEmail: customerEmail,
         shippingAddress: order.shipping_address || "N/A",
         items: order.order_items?.map((item: any) => ({
           id: item.id,
-          product_name: item.products?.name || "Product",
+          product_name: item.products_belong_to?.name || item.products?.name || "Product",
           quantity: item.quantity,
           price: item.price,
           subtotal: item.price * item.quantity,
