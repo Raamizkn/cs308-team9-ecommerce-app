@@ -17,10 +17,12 @@ export default function CartPage() {
   const [discountCode, setDiscountCode] = useState("")
   const [discount, setDiscount] = useState(0)
   const [discountError, setDiscountError] = useState("")
+  const [stockWarnings, setStockWarnings] = useState<Record<string, string>>({})
 
   useEffect(() => {
     checkSalesManagerRedirect()
-  }, [])
+    validateCartStock()
+  }, [items])
 
   const checkSalesManagerRedirect = async () => {
     try {
@@ -43,6 +45,39 @@ export default function CartPage() {
       }
     } catch (error) {
       console.error("[Group9] Error checking sales manager:", error)
+    }
+  }
+
+  const validateCartStock = async () => {
+    if (items.length === 0) {
+      setStockWarnings({})
+      return
+    }
+
+    try {
+      const supabase = getSupabaseBrowserClient()
+      const warnings: Record<string, string> = {}
+
+      // Check each item's current stock
+      for (const item of items) {
+        const { data: product } = await supabase
+          .from("products_belong_to")
+          .select("pid, stock_quantity")
+          .eq("pid", parseInt(item.product_id))
+          .single()
+
+        if (product) {
+          if (product.stock_quantity === 0) {
+            warnings[item.product_id] = "OUT OF STOCK - Remove from cart"
+          } else if (item.quantity > product.stock_quantity) {
+            warnings[item.product_id] = `Only ${product.stock_quantity} available`
+          }
+        }
+      }
+
+      setStockWarnings(warnings)
+    } catch (error) {
+      console.error("[Group9] Error validating cart stock:", error)
     }
   }
 
@@ -105,6 +140,16 @@ export default function CartPage() {
             <div className="lg:col-span-2 space-y-4">
               {items.map((item) => (
                 <div key={item.product_id} className="bg-white border-4 border-black p-4 pixel-shadow-sm">
+                  {/* Stock warning banner */}
+                  {stockWarnings[item.product_id] && (
+                    <div className="mb-3 p-2 bg-[#ff6b9d] border-2 border-black">
+                      <p className="text-sm font-bold text-white flex items-center gap-2">
+                        <span>⚠️</span>
+                        {stockWarnings[item.product_id]}
+                      </p>
+                    </div>
+                  )}
+                  
                   <div className="flex gap-4">
                     <div className="relative w-24 h-24 bg-[#4ecdc4] border-4 border-black flex-shrink-0">
                       <Image src={item.image_url || "/placeholder.svg"} alt={item.name} fill className="object-cover" />
@@ -217,10 +262,20 @@ export default function CartPage() {
                 </div>
 
                 <Link href="/checkout">
-                  <Button className="w-full bg-[#ffb347] hover:bg-[#ffd93d] text-black border-4 border-black font-bold text-lg py-6 pixel-shadow-sm">
-                    PROCEED TO CHECKOUT
+                  <Button 
+                    className="w-full bg-[#ffb347] hover:bg-[#ffd93d] text-black border-4 border-black font-bold text-lg py-6 pixel-shadow-sm disabled:bg-gray-400 disabled:cursor-not-allowed"
+                    disabled={Object.keys(stockWarnings).length > 0}
+                  >
+                    {Object.keys(stockWarnings).length > 0 
+                      ? "RESOLVE STOCK ISSUES FIRST" 
+                      : "PROCEED TO CHECKOUT"}
                   </Button>
                 </Link>
+                {Object.keys(stockWarnings).length > 0 && (
+                  <p className="text-[#ff6b9d] text-sm font-bold text-center mt-2">
+                    Please remove or update out-of-stock items before checkout
+                  </p>
+                )}
               </div>
             </div>
           </div>

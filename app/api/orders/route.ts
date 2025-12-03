@@ -30,6 +30,58 @@ export async function POST(request: Request) {
       console.log("[Group9] Creating order for user:", userId)
     }
 
+    // ===== CRITICAL: Validate stock availability BEFORE creating order =====
+    console.log("[Group9] Validating stock availability for", items.length, "items")
+    
+    const stockValidationErrors: string[] = []
+    
+    for (const item of items) {
+      const productId = parseInt(item.product_id, 10)
+      
+      // Fetch current stock from database
+      const { data: product, error: productError } = await supabase
+        .from("products_belong_to")
+        .select("pid, name, stock_quantity")
+        .eq("pid", productId)
+        .single()
+
+      if (productError || !product) {
+        console.error("[Group9] Product not found:", productId, productError)
+        stockValidationErrors.push(`Product with ID ${productId} not found`)
+        continue
+      }
+
+      // Check if requested quantity exceeds available stock
+      if (product.stock_quantity < item.quantity) {
+        console.warn(
+          `[Group9] Insufficient stock for product ${product.name} (ID: ${productId}). ` +
+          `Requested: ${item.quantity}, Available: ${product.stock_quantity}`
+        )
+        
+        if (product.stock_quantity === 0) {
+          stockValidationErrors.push(`${product.name} is out of stock`)
+        } else {
+          stockValidationErrors.push(
+            `${product.name}: Only ${product.stock_quantity} item(s) available (you requested ${item.quantity})`
+          )
+        }
+      }
+    }
+
+    // If any stock validation errors, reject the order
+    if (stockValidationErrors.length > 0) {
+      console.error("[Group9] Order rejected due to insufficient stock:", stockValidationErrors)
+      return NextResponse.json(
+        {
+          error: "Some items in your cart are out of stock or have insufficient quantity",
+          details: stockValidationErrors,
+        },
+        { status: 400 }
+      )
+    }
+
+    console.log("[Group9] Stock validation passed - proceeding with order creation")
+
     // Create order
     const { data: order, error: orderError } = await supabase
       .from("orders")
@@ -60,10 +112,14 @@ export async function POST(request: Request) {
 
     if (itemsError) {
       console.error("[Group9] Error creating order items:", itemsError)
+      // Rollback: Delete the order since items failed
+      await supabase.from("orders").delete().eq("id", order.id)
       return NextResponse.json({ error: "Failed to create order items" }, { status: 500 })
     }
 
-    // Update product stock
+    // Update product stock (now with proper error handling)
+    console.log("[Group9] Decrementing stock for order:", order.id)
+    
     for (const item of items) {
       const { error: stockError } = await supabase.rpc("decrement_stock", {
         product_id: item.product_id,
@@ -72,6 +128,8 @@ export async function POST(request: Request) {
 
       if (stockError) {
         console.error("[Group9] Error updating stock:", stockError)
+        // Note: At this point order is created but stock update failed
+        // This is logged for manual intervention/monitoring
       }
     }
 

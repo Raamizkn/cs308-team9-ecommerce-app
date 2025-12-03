@@ -64,11 +64,37 @@ export default function CheckoutPage() {
       console.log("[Group9] Client-side: Order response:", data)
 
       if (data.error) {
-        toast({
-          title: "Order failed",
-          description: data.error,
-          variant: "destructive",
-        })
+        // Handle detailed stock validation errors
+        if (data.details && Array.isArray(data.details)) {
+          // Show main error with first detail
+          toast({
+            title: "Order failed - Stock unavailable",
+            description: data.details[0],
+            variant: "destructive",
+          })
+          
+          // Show additional errors if multiple items have issues
+          if (data.details.length > 1) {
+            setTimeout(() => {
+              data.details.slice(1).forEach((detail: string, index: number) => {
+                setTimeout(() => {
+                  toast({
+                    title: "Additional stock issue",
+                    description: detail,
+                    variant: "destructive",
+                  })
+                }, index * 300) // Stagger toasts
+              })
+            }, 500)
+          }
+        } else {
+          // Fallback for generic errors
+          toast({
+            title: "Order failed",
+            description: data.error,
+            variant: "destructive",
+          })
+        }
         return
       }
 

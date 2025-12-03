@@ -48,6 +48,16 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   const addItem = (product: Omit<CartItem, "quantity">) => {
     setItems((currentItems) => {
+      // Check if product is out of stock
+      if (product.stock === 0) {
+        toast({
+          title: "Out of stock",
+          description: `${product.name} is currently unavailable`,
+          variant: "destructive",
+        })
+        return currentItems
+      }
+
       const existingItem = currentItems.find((item) => item.product_id === product.product_id)
 
       if (existingItem) {
