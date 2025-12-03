@@ -10,19 +10,21 @@ import { useToast } from "@/hooks/use-toast"
 import { ArrowLeft, TrendingUp, CheckCircle, XCircle, Clock, AlertTriangle } from "lucide-react"
 
 interface RefundRequest {
-  refund_id: number
-  order_id: number
+  id: string // UUID
+  order_item_id: string // UUID
+  quantity: number
+  status: string
+  // Joined data
+  order_id: string
+  order_created_at: string
+  order_status: string
   product_id: number
   product_name: string
+  item_price: number
+  item_quantity: number // original quantity in order
+  refund_amount: number // calculated: item_price * refund_requests.quantity
+  customer_id: string
   customer_name: string
-  customer_email: string
-  quantity: number
-  refund_amount: number
-  reason: string
-  status: string
-  request_date: string
-  order_date: string
-  delivery_date: string | null
 }
 
 export default function RefundRequestsPage() {
@@ -31,7 +33,7 @@ export default function RefundRequestsPage() {
   const [loading, setLoading] = useState(true)
   const [refunds, setRefunds] = useState<RefundRequest[]>([])
   const [statusFilter, setStatusFilter] = useState<string>("pending")
-  const [processing, setProcessing] = useState<number | null>(null)
+  const [processing, setProcessing] = useState<string | null>(null)
 
   useEffect(() => {
     checkAccessAndLoadRefunds()
@@ -73,47 +75,93 @@ export default function RefundRequestsPage() {
     try {
       const supabase = getSupabaseBrowserClient()
 
-      // Load refund requests with related data
+      // Load refund requests with related data through order_items
       const { data: refundsData, error: refundsError } = await supabase
         .from("refund_requests")
         .select(`
-          refund_id,
-          order_id,
-          product_id,
+          id,
+          order_item_id,
           quantity,
-          refund_amount,
-          reason,
           status,
-          request_date,
-          orders!inner (
-            order_date,
-            delivery_date,
-            profiles!orders_customer_id_fkey (
-              name,
-              customers (email)
+          order_items!inner (
+            id,
+            order_id,
+            product_id,
+            quantity,
+            price,
+            orders!inner (
+              id,
+              user_id,
+              status,
+              created_at
+            ),
+            products_belong_to!inner (
+              pid,
+              name
             )
-          ),
-          products (name)
+          )
         `)
-        .order("request_date", { ascending: false })
+        .order("id", { ascending: false })
 
-      if (refundsError) throw refundsError
+      if (refundsError) {
+        console.error("[Group9] Error loading refunds:", refundsError)
+        throw refundsError
+      }
 
-      const formattedRefunds: RefundRequest[] = (refundsData || []).map((refund: any) => ({
-        refund_id: refund.refund_id,
-        order_id: refund.order_id,
-        product_id: refund.product_id,
-        product_name: refund.products?.name || "Unknown Product",
-        customer_name: refund.orders?.profiles?.name || "Unknown Customer",
-        customer_email: refund.orders?.profiles?.customers?.email || "No Email",
-        quantity: refund.quantity,
-        refund_amount: refund.refund_amount,
-        reason: refund.reason,
-        status: refund.status,
-        request_date: refund.request_date,
-        order_date: refund.orders?.order_date,
-        delivery_date: refund.orders?.delivery_date,
-      }))
+      // Get unique user IDs and fetch their profiles
+      const userIds = [...new Set((refundsData || []).map((refund: any) => refund.order_items?.orders?.user_id).filter(Boolean))]
+      const profilesMap: Record<string, string | null> = {}
+      
+      if (userIds.length > 0) {
+        const { data: profilesData, error: profilesError } = await supabase
+          .from("profiles")
+          .select("uid, name")
+          .in("uid", userIds)
+        
+        if (profilesError) {
+          console.error("[Group9] Error fetching profiles:", profilesError)
+        }
+        
+        if (profilesData) {
+          profilesData.forEach((profile: any) => {
+            profilesMap[profile.uid] = profile.name
+          })
+        }
+      }
+
+      // Format the data to match our interface
+      const formattedRefunds: RefundRequest[] = (refundsData || []).map((refund: any) => {
+        const orderItem = refund.order_items
+        const order = orderItem?.orders
+        const product = orderItem?.products_belong_to
+        
+        if (!order || !product) {
+          console.error("[Group9] Missing order or product data for refund:", refund.id)
+          return null
+        }
+        
+        const customerName = order.user_id ? (profilesMap[order.user_id] || null) : null
+        
+        // Calculate refund amount
+        const refundAmount = parseFloat(orderItem.price || 0) * (refund.quantity || 0)
+
+        return {
+          id: refund.id,
+          order_item_id: refund.order_item_id,
+          quantity: refund.quantity,
+          status: refund.status,
+          order_id: order.id,
+          order_created_at: order.created_at,
+          order_status: order.status,
+          product_id: product.pid,
+          product_name: product.name || "Unknown Product",
+          item_price: parseFloat(orderItem.price || 0),
+          item_quantity: orderItem.quantity || 0,
+          refund_amount: refundAmount,
+          customer_id: order.user_id || "",
+          customer_name: customerName || "Unknown Customer",
+        }
+      }).filter((refund): refund is RefundRequest => refund !== null)
 
       setRefunds(formattedRefunds)
     } catch (error) {
@@ -126,79 +174,14 @@ export default function RefundRequestsPage() {
     }
   }
 
-  const handleRefundDecision = async (refundId: number, approve: boolean) => {
-    setProcessing(refundId)
-    try {
-      const supabase = getSupabaseBrowserClient()
-      
-      const refund = refunds.find(r => r.refund_id === refundId)
-      if (!refund) return
-
-      if (approve) {
-        // Approve refund - add product back to stock
-        const { data: productData } = await supabase
-          .from("products")
-          .select("quantity_in_stocks")
-          .eq("product_id", refund.product_id)
-          .single()
-
-        if (productData) {
-          const newStock = productData.quantity_in_stocks + refund.quantity
-
-          // Update stock
-          const { error: stockError } = await supabase
-            .from("products")
-            .update({ quantity_in_stocks: newStock })
-            .eq("product_id", refund.product_id)
-
-          if (stockError) throw stockError
-        }
-
-        // Update refund status
-        const { error: statusError } = await supabase
-          .from("refund_requests")
-          .update({ 
-            status: "approved",
-            approved_at: new Date().toISOString()
-          })
-          .eq("refund_id", refundId)
-
-        if (statusError) throw statusError
-
-        toast({
-          title: "Refund approved",
-          description: `Refund of $${refund.refund_amount.toFixed(2)} approved. Product added back to stock.`,
-        })
-      } else {
-        // Reject refund
-        const { error } = await supabase
-          .from("refund_requests")
-          .update({ 
-            status: "rejected",
-            rejected_at: new Date().toISOString()
-          })
-          .eq("refund_id", refundId)
-
-        if (error) throw error
-
-        toast({
-          title: "Refund rejected",
-          description: "The refund request has been rejected.",
-        })
-      }
-
-      // Reload refunds
-      await loadRefunds()
-    } catch (error) {
-      console.error("[Group9] Error processing refund:", error)
-      toast({
-        title: "Error",
-        description: "Failed to process refund request",
-        variant: "destructive",
-      })
-    } finally {
-      setProcessing(null)
-    }
+  const handleRefundDecision = async (refundId: string, approve: boolean) => {
+    // This function will be implemented in the next step
+    // For now, just show a message that this feature is not yet implemented
+    toast({
+      title: "Not implemented",
+      description: "Refund approval/rejection will be implemented in the next step.",
+      variant: "default",
+    })
   }
 
   const formatDate = (dateString: string) => {
@@ -347,13 +330,13 @@ export default function RefundRequestsPage() {
             </div>
           ) : (
             filteredRefunds.map((refund) => {
-              const daysFromPurchase = getDaysFromPurchase(refund.order_date)
-              const withinWindow = isWithinRefundWindow(refund.order_date)
+              const daysFromPurchase = getDaysFromPurchase(refund.order_created_at)
+              const withinWindow = isWithinRefundWindow(refund.order_created_at)
               const isPending = refund.status.toLowerCase() === "pending"
 
               return (
                 <div
-                  key={refund.refund_id}
+                  key={refund.id}
                   className={`bg-white border-4 border-black pixel-shadow-sm ${
                     !withinWindow ? "opacity-75" : ""
                   }`}
@@ -363,7 +346,7 @@ export default function RefundRequestsPage() {
                       <div className="flex-grow">
                         <div className="flex items-center gap-3 mb-2">
                           <span className="font-[family-name:var(--font-pixel)] text-2xl text-[#1a1a3e]">
-                            REFUND #{refund.refund_id.toString().padStart(6, "0")}
+                            REFUND #{refund.id.slice(0, 8).toUpperCase()}
                           </span>
                           <span
                             className={`px-3 py-1 text-xs font-bold border-2 border-black ${getStatusColor(
@@ -380,10 +363,10 @@ export default function RefundRequestsPage() {
                         </div>
                         <div className="text-sm text-[#6c757d] space-y-1">
                           <div>
-                            <span className="font-bold">Order:</span> #{refund.order_id.toString().padStart(6, "0")}
+                            <span className="font-bold">Order:</span> #{refund.order_id.slice(0, 8).toUpperCase()}
                           </div>
                           <div>
-                            <span className="font-bold">Requested:</span> {formatDate(refund.request_date)}
+                            <span className="font-bold">Requested:</span> {formatDate(refund.order_created_at)}
                           </div>
                           <div>
                             <span className="font-bold">Days from purchase:</span> {daysFromPurchase} days
@@ -402,39 +385,31 @@ export default function RefundRequestsPage() {
                       <div>
                         <div className="text-xs font-bold text-[#6c757d] mb-1">CUSTOMER</div>
                         <div className="font-bold text-[#1a1a3e]">{refund.customer_name}</div>
-                        <div className="text-sm text-[#6c757d]">{refund.customer_email}</div>
                       </div>
                       <div>
                         <div className="text-xs font-bold text-[#6c757d] mb-1">PRODUCT</div>
                         <div className="font-bold text-[#1a1a3e]">{refund.product_name}</div>
-                        <div className="text-sm text-[#6c757d]">Quantity: {refund.quantity}</div>
+                        <div className="text-sm text-[#6c757d]">Quantity: {refund.quantity} (of {refund.item_quantity} ordered)</div>
                       </div>
                     </div>
-
-                    {refund.reason && (
-                      <div className="mb-4 p-4 bg-[#e9ecef] border-2 border-black">
-                        <div className="text-xs font-bold text-[#6c757d] mb-2">REASON FOR REFUND</div>
-                        <p className="text-sm text-[#1a1a3e]">{refund.reason}</p>
-                      </div>
-                    )}
 
                     {isPending && (
                       <div className="flex items-center gap-3 pt-4 border-t-2 border-black">
                         <Button
-                          onClick={() => handleRefundDecision(refund.refund_id, true)}
-                          disabled={processing === refund.refund_id || !withinWindow}
+                          onClick={() => handleRefundDecision(refund.id, true)}
+                          disabled={processing === refund.id || !withinWindow}
                           className="bg-[#6bcf7f] hover:bg-[#5bb86f] text-black border-4 border-black font-bold"
                         >
                           <CheckCircle className="h-4 w-4 mr-2" />
-                          {processing === refund.refund_id ? "PROCESSING..." : "APPROVE REFUND"}
+                          {processing === refund.id ? "PROCESSING..." : "APPROVE REFUND"}
                         </Button>
                         <Button
-                          onClick={() => handleRefundDecision(refund.refund_id, false)}
-                          disabled={processing === refund.refund_id}
+                          onClick={() => handleRefundDecision(refund.id, false)}
+                          disabled={processing === refund.id}
                           className="bg-[#dc3545] hover:bg-[#c82333] text-white border-4 border-black font-bold"
                         >
                           <XCircle className="h-4 w-4 mr-2" />
-                          {processing === refund.refund_id ? "PROCESSING..." : "REJECT REFUND"}
+                          {processing === refund.id ? "PROCESSING..." : "REJECT REFUND"}
                         </Button>
                         {!withinWindow && (
                           <span className="text-sm text-[#dc3545] font-bold flex items-center gap-1 ml-2">
@@ -454,4 +429,5 @@ export default function RefundRequestsPage() {
     </div>
   )
 }
+
 

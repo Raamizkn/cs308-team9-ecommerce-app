@@ -9,12 +9,17 @@ import { Package, User, LogOut, Eye } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
 
+type RefundSummary = { approved: number; pending: number; rejected: number }
+
 export default function OrdersPage() {
   const router = useRouter()
   const { toast } = useToast()
   const [user, setUser] = useState<any>(null)
   const [orders, setOrders] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [refundSummaryByItem, setRefundSummaryByItem] = useState<Record<string, RefundSummary>>({})
+  const [selectedQty, setSelectedQty] = useState<Record<string, number>>({})
+  const [submittingItem, setSubmittingItem] = useState<string | null>(null)
 
   useEffect(() => {
     checkSalesManagerRedirect()
@@ -62,6 +67,54 @@ export default function OrdersPage() {
     }
   }
 
+  const isWithinRefundWindow = (createdAt: string) => {
+    const purchaseDate = new Date(createdAt)
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+    return purchaseDate >= thirtyDaysAgo
+  }
+
+  const remainingRefundableQty = (itemId: string, purchasedQty: number) => {
+    const summary = refundSummaryByItem[itemId]
+    if (!summary) return purchasedQty
+    const reservedQty = summary.approved + summary.pending
+    const remaining = purchasedQty - reservedQty
+    return remaining > 0 ? remaining : 0
+  }
+
+  const loadRefundSummaries = async (supabaseClient: any, ordersData: any[]) => {
+    const itemIds = ordersData.flatMap((order: any) => order.order_items?.map((item: any) => item.id) ?? [])
+
+    if (itemIds.length === 0) {
+      setRefundSummaryByItem({})
+      return
+    }
+
+    const { data: refunds, error } = await supabaseClient
+      .from("refund_requests")
+      .select("order_item_id, quantity, status")
+      .in("order_item_id", itemIds)
+
+    if (error) {
+      console.error("[Group9] Error fetching refunds:", error)
+      setRefundSummaryByItem({})
+      return
+    }
+
+    const summaries: Record<string, RefundSummary> = {}
+    refunds?.forEach((row: { order_item_id: string; quantity: number; status: string }) => {
+      const current = summaries[row.order_item_id] ?? { approved: 0, pending: 0, rejected: 0 }
+      if (row.status === "approved") {
+        current.approved += row.quantity
+      } else if (row.status === "pending") {
+        current.pending += row.quantity
+      } else if (row.status === "rejected") {
+        current.rejected += row.quantity
+      }
+      summaries[row.order_item_id] = current
+    })
+    setRefundSummaryByItem(summaries)
+  }
+
   const fetchOrders = async () => {
     try {
       const supabase = getSupabaseBrowserClient()
@@ -70,6 +123,8 @@ export default function OrdersPage() {
       } = await supabase.auth.getUser()
 
       if (user) {
+        let fetchedOrders: any[] = []
+        // First try with join, if it fails, try without
         // First try with join, if it fails, try without
         const { data, error } = await supabase
           .from("orders")
@@ -86,15 +141,72 @@ export default function OrdersPage() {
             .eq("user_id", user.id)
             .order("created_at", { ascending: false })
           
-          setOrders(ordersOnly || [])
+          fetchedOrders = ordersOnly || []
         } else {
-          setOrders(data || [])
+          fetchedOrders = data || []
         }
+
+        setOrders(fetchedOrders)
+        await loadRefundSummaries(supabase, fetchedOrders)
+      } else {
+        setOrders([])
+        setRefundSummaryByItem({})
       }
     } catch (error) {
       console.error("[Group9] Error fetching orders:", error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleRequestRefund = async (orderId: string, itemId: string) => {
+    try {
+      setSubmittingItem(itemId)
+      const supabase = getSupabaseBrowserClient()
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+
+      if (!user) {
+        toast({
+          title: "Please log in",
+          description: "You must be signed in to request a refund.",
+          variant: "destructive",
+        })
+        return
+      }
+
+      const qty = selectedQty[itemId] ?? 1
+      const { error } = await supabase.rpc("create_refund_request", {
+        p_user_id: user.id,
+        p_order_item_id: itemId,
+        p_quantity: qty,
+      })
+
+      if (error) {
+        toast({
+          title: "Refund failed",
+          description: error.message,
+          variant: "destructive",
+        })
+        return
+      }
+
+      toast({
+        title: "Refund requested",
+        description: "We'll review your request shortly.",
+      })
+
+      await fetchOrders()
+    } catch (error) {
+      console.error("[Group9] Refund request error:", error)
+      toast({
+        title: "Refund failed",
+        description: "Unexpected error requesting refund.",
+        variant: "destructive",
+      })
+    } finally {
+      setSubmittingItem(null)
     }
   }
 
@@ -234,6 +346,72 @@ export default function OrdersPage() {
                         {order.order_items?.map((item: any) => (
                           <li key={item.id} className="text-sm text-[#6c757d]">
                             {item.products?.name} x{item.quantity} - ${(item.price * item.quantity).toFixed(2)}
+                            {order.status === "delivered" && isWithinRefundWindow(order.created_at) ? (
+                              (() => {
+                                const summary = refundSummaryByItem[item.id]
+                                const remaining = remainingRefundableQty(item.id, item.quantity)
+                                const pendingQty = summary?.pending ?? 0
+                                const approvedQty = summary?.approved ?? 0
+                                
+                                // Show fully refunded if all items are approved
+                                if (approvedQty >= item.quantity) {
+                                  return <p className="text-xs text-green-600 mt-1">Fully refunded</p>
+                                }
+                                
+                                // Show refund controls with pending/approved info
+                                return (
+                                  <div className="mt-2 space-y-1">
+                                    {/* Show pending refund info if exists */}
+                                    {pendingQty > 0 && (
+                                      <p className="text-xs text-[#ff9800] font-semibold">
+                                        ⏳ Refund request pending: {pendingQty} item{pendingQty > 1 ? "s" : ""} awaiting review
+                                      </p>
+                                    )}
+                                    {/* Show approved refund info if exists */}
+                                    {approvedQty > 0 && (
+                                      <p className="text-xs text-green-600 font-semibold">
+                                        ✓ {approvedQty} item{approvedQty > 1 ? "s" : ""} refunded
+                                      </p>
+                                    )}
+                                    {/* Show refund controls if there's remaining quantity */}
+                                    {remaining > 0 ? (
+                                      <div className="flex flex-wrap items-center gap-2">
+                                        <select
+                                          className="border border-black px-2 py-1 text-xs"
+                                          value={selectedQty[item.id] ?? 1}
+                                          onChange={(e) =>
+                                            setSelectedQty((prev) => ({
+                                              ...prev,
+                                              [item.id]: Number(e.target.value),
+                                            }))
+                                          }
+                                        >
+                                          {Array.from({ length: remaining }, (_, i) => i + 1).map((qty) => (
+                                            <option key={qty} value={qty}>
+                                              {qty}
+                                            </option>
+                                          ))}
+                                        </select>
+                                        <Button
+                                          size="sm"
+                                          className="bg-[#ffb347] hover:bg-[#ffd93d] text-black border-4 border-black"
+                                          disabled={submittingItem === item.id}
+                                          onClick={() => handleRequestRefund(order.id, item.id)}
+                                        >
+                                          {submittingItem === item.id ? "Submitting..." : "Request Refund"}
+                                        </Button>
+                                      </div>
+                                    ) : pendingQty > 0 ? (
+                                      <p className="text-xs text-[#ff9800] mt-1">
+                                        All items have refund requests pending review
+                                      </p>
+                                    ) : null}
+                                  </div>
+                                )
+                              })()
+                            ) : (
+                              <p className="text-xs text-[#adb5bd] mt-1">Refund window closed</p>
+                            )}
                           </li>
                         ))}
                       </ul>
