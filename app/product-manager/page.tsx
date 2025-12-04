@@ -10,7 +10,9 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast"
 import { getSupabaseBrowserClient } from "@/lib/supabase/client"
-import { ArrowLeft, ClipboardList, PackageCheck, PlusCircle, X, LogOut } from "lucide-react"
+import { ArrowLeft, ClipboardList, PackageCheck, PlusCircle, X, LogOut, Download } from "lucide-react"
+import { pdf } from "@react-pdf/renderer"
+import { InvoicePDF } from "@/components/invoice-pdf"
 
 interface ProductRecord {
   pid: number
@@ -37,6 +39,7 @@ interface DeliveryRecord {
 interface InvoiceRecord {
   invoiceId: string
   orderId: string
+  actualOrderId: string // Store the actual UUID for PDF generation
   customer: string
   total: number
   status: "awaiting-shipment" | "shipped" | "delivered"
@@ -119,32 +122,6 @@ const mockDeliveries: DeliveryRecord[] = [
   },
 ]
 
-const mockInvoices: InvoiceRecord[] = [
-  {
-    invoiceId: "INV-5001",
-    orderId: "ORD-1881",
-    customer: "Ceren K.",
-    total: 428.5,
-    status: "awaiting-shipment",
-    createdAt: "2025-11-26",
-  },
-  {
-    invoiceId: "INV-5002",
-    orderId: "ORD-1882",
-    customer: "Kemal T.",
-    total: 179.99,
-    status: "shipped",
-    createdAt: "2025-11-25",
-  },
-  {
-    invoiceId: "INV-5003",
-    orderId: "ORD-1874",
-    customer: "Sarah O.",
-    total: 89.99,
-    status: "delivered",
-    createdAt: "2025-11-20",
-  },
-]
 
 export default function ProductManagerDashboardPage() {
   const router = useRouter()
@@ -152,11 +129,13 @@ export default function ProductManagerDashboardPage() {
   const [products, setProducts] = useState<ProductRecord[]>([])
   const [categories, setCategories] = useState<string[]>([])
   const [deliveries, setDeliveries] = useState<DeliveryRecord[]>(mockDeliveries)
-  const [invoices] = useState<InvoiceRecord[]>(mockInvoices)
+  const [invoices, setInvoices] = useState<InvoiceRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [loadingCategories, setLoadingCategories] = useState(true)
+  const [loadingInvoices, setLoadingInvoices] = useState(true)
   const [user, setUser] = useState<any>(null)
   const [checkingAccess, setCheckingAccess] = useState(true)
+  const [downloadingInvoiceId, setDownloadingInvoiceId] = useState<string | null>(null)
 
   const [stockEdits, setStockEdits] = useState<Record<number, string>>({})
   const [newCategory, setNewCategory] = useState("")
@@ -214,8 +193,9 @@ export default function ProductManagerDashboardPage() {
         name: profileData?.name || authUser.email?.split("@")[0] || "Product Manager",
       })
 
-      // Fetch products after access is confirmed
+      // Fetch products and invoices after access is confirmed
       fetchProducts()
+      fetchInvoices()
     } catch (error) {
       console.error("[Group9] Error checking product manager access:", error)
       router.push("/login")
@@ -243,6 +223,190 @@ export default function ProductManagerDashboardPage() {
       })
     } finally {
       setLoading(false)
+    }
+  }
+
+  const fetchInvoices = async () => {
+    try {
+      setLoadingInvoices(true)
+      const supabase = getSupabaseBrowserClient()
+      
+      // Fetch all orders with their items and products
+      const { data: ordersData, error: ordersError } = await supabase
+        .from("orders")
+        .select(`
+          id,
+          created_at,
+          total,
+          status,
+          shipping_address,
+          user_id,
+          order_items (
+            id,
+            quantity,
+            price,
+            products_belong_to (
+              name
+            )
+          )
+        `)
+        .order("created_at", { ascending: false })
+
+      if (ordersError) {
+        throw ordersError
+      }
+
+      // Fetch customer names from profiles
+      const userIds = [...new Set((ordersData || []).map((order: any) => order.user_id).filter(Boolean))]
+      const { data: profilesData } = await supabase
+        .from("profiles")
+        .select("uid, name")
+        .in("uid", userIds)
+
+      const profilesMap = new Map((profilesData || []).map((p: any) => [p.uid, p.name]))
+
+      // Transform orders into invoice records
+      const invoiceRecords: InvoiceRecord[] = (ordersData || []).map((order: any) => {
+        const customerName = order.user_id ? (profilesMap.get(order.user_id) || "Guest Customer") : "Guest Customer"
+        const firstProduct = order.order_items?.[0]?.products_belong_to?.name || "Product"
+        
+        // Determine status for display
+        let displayStatus: "awaiting-shipment" | "shipped" | "delivered" = "awaiting-shipment"
+        if (order.status === "delivered") {
+          displayStatus = "delivered"
+        } else if (order.status === "shipped") {
+          displayStatus = "shipped"
+        } else {
+          displayStatus = "awaiting-shipment"
+        }
+
+        return {
+          invoiceId: `INV-${order.id.slice(0, 8).toUpperCase()}`,
+          orderId: `ORD-${order.id.slice(0, 8).toUpperCase()}`,
+          actualOrderId: order.id, // Store the actual UUID
+          customer: customerName,
+          total: Number(order.total) || 0,
+          status: displayStatus,
+          createdAt: order.created_at,
+        }
+      })
+
+      setInvoices(invoiceRecords)
+    } catch (error) {
+      console.error("[Group9] Error fetching invoices:", error)
+      toast({
+        title: "Error loading invoices",
+        description: error instanceof Error ? error.message : "Failed to fetch invoices",
+        variant: "destructive",
+      })
+      // Fallback to empty array on error
+      setInvoices([])
+    } finally {
+      setLoadingInvoices(false)
+    }
+  }
+
+  const downloadInvoicePDF = async (orderId: string) => {
+    setDownloadingInvoiceId(orderId)
+    try {
+      const supabase = getSupabaseBrowserClient()
+      
+      // Fetch full order details
+      const { data: order, error: orderError } = await supabase
+        .from("orders")
+        .select("*, order_items(*, products_belong_to(*))")
+        .eq("id", orderId)
+        .single()
+
+      if (orderError || !order) {
+        throw new Error("Order not found")
+      }
+
+      // Fetch customer information
+      let customerName = "Customer"
+      let customerEmail = "customer@pixelvault.com"
+      
+      if (order.user_id) {
+        try {
+          const response = await fetch(`/api/users?user_id=${order.user_id}`)
+          if (response.ok) {
+            const userData = await response.json()
+            if (userData.name) {
+              customerName = userData.name
+            }
+            if (userData.email) {
+              customerEmail = userData.email
+            }
+          }
+        } catch (error) {
+          console.error("[Group9] Error fetching user info:", error)
+          // Fallback: try to get from profiles
+          const { data: profileData } = await supabase
+            .from("profiles")
+            .select("name")
+            .eq("uid", order.user_id)
+            .maybeSingle()
+          
+          if (profileData?.name) {
+            customerName = profileData.name
+          }
+        }
+      }
+
+      // Calculate totals
+      const subtotal = order.order_items?.reduce((sum: number, item: any) => sum + (item.price * item.quantity), 0) || 0
+      const shipping = 10.00
+      const tax = subtotal * 0.08
+      const total = subtotal + shipping + tax
+
+      // Prepare invoice data
+      const invoiceData = {
+        orderId: order.id,
+        orderDate: order.created_at,
+        customerName: customerName,
+        customerEmail: customerEmail,
+        shippingAddress: order.shipping_address || "N/A",
+        items: order.order_items?.map((item: any) => ({
+          id: item.id,
+          product_name: item.products_belong_to?.name || item.products?.name || "Product",
+          quantity: item.quantity,
+          price: item.price,
+          subtotal: item.price * item.quantity,
+        })) || [],
+        subtotal,
+        shipping,
+        tax,
+        total,
+        status: order.status,
+        paymentMethod: order.payment_method || "Credit Card",
+      }
+
+      // Generate PDF
+      const blob = await pdf(<InvoicePDF data={invoiceData} />).toBlob()
+
+      // Download PDF
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement("a")
+      link.href = url
+      link.download = `pixelvault-invoice-${order.id.substring(0, 8)}.pdf`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+
+      toast({
+        title: "Invoice downloaded",
+        description: "Your invoice PDF has been saved successfully",
+      })
+    } catch (error) {
+      console.error("[Group9] Error generating invoice:", error)
+      toast({
+        title: "Download failed",
+        description: error instanceof Error ? error.message : "Failed to generate invoice. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setDownloadingInvoiceId(null)
     }
   }
 
@@ -820,23 +984,61 @@ export default function ProductManagerDashboardPage() {
               <p className="text-[#6c757d]">Read-only list of invoices tied to deliveries.</p>
             </div>
             <div className="p-6 space-y-4">
-              {invoices.map((invoice) => (
-                <div key={invoice.invoiceId} className="border-2 border-black p-4 bg-[#f8f9fa]">
-                  <div>
-                    <p className="text-sm font-mono text-[#6c757d]">Invoice #{invoice.invoiceId}</p>
-                    <p className="text-lg font-bold text-[#1a1a3e]">Order {invoice.orderId}</p>
-                  </div>
-                  <div className="flex flex-wrap gap-4 text-sm">
-                    <span className="font-bold text-[#1a1a3e]">Customer: {invoice.customer}</span>
-                    <span>Total: ${invoice.total.toFixed(2)}</span>
-                    <span>Created: {new Date(invoice.createdAt).toLocaleDateString()}</span>
-                    <span>Status: {invoice.status.replace("-", " ")}</span>
-                  </div>
+              {loadingInvoices ? (
+                <div className="text-center text-[#6c757d] py-8">
+                  Loading invoices...
                 </div>
-              ))}
-              <div className="text-xs text-[#6c757d]">
-                TODO: connect to `/orders` and `/invoices` tables. Product managers can only update fulfillment-related fields.
-              </div>
+              ) : invoices.length === 0 ? (
+                <div className="text-center text-[#6c757d] py-8">
+                  <p className="font-bold mb-2">No invoices found</p>
+                  <p className="text-sm">Orders will appear here once customers place orders.</p>
+                </div>
+              ) : (
+                <>
+                  {invoices.map((invoice) => (
+                    <div key={invoice.invoiceId} className="border-2 border-black p-4 bg-[#f8f9fa] hover:bg-[#e9ecef] transition-colors">
+                      <div className="flex items-start justify-between mb-2">
+                        <div>
+                          <p className="text-sm font-mono text-[#6c757d]">Invoice #{invoice.invoiceId}</p>
+                          <p className="text-lg font-bold text-[#1a1a3e]">Order {invoice.orderId}</p>
+                        </div>
+                        <Button
+                          size="sm"
+                          onClick={() => downloadInvoicePDF(invoice.actualOrderId)}
+                          disabled={downloadingInvoiceId === invoice.actualOrderId}
+                          className="bg-[#4ecdc4] hover:bg-[#3dbcb4] text-[#1a1a3e] border-2 border-black font-bold"
+                        >
+                          {downloadingInvoiceId === invoice.actualOrderId ? (
+                            <>
+                              <div className="inline-block w-3 h-3 border-2 border-[#1a1a3e] border-t-transparent rounded-full animate-spin mr-1" />
+                              Generating...
+                            </>
+                          ) : (
+                            <>
+                              <Download className="h-3 w-3 mr-1" />
+                              PDF
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                      <div className="flex flex-wrap gap-4 text-sm mt-2">
+                        <span className="font-bold text-[#1a1a3e]">Customer: {invoice.customer}</span>
+                        <span className="font-bold text-[#5b3a8f]">Total: ${invoice.total.toFixed(2)}</span>
+                        <span className="text-[#6c757d]">Created: {new Date(invoice.createdAt).toLocaleDateString()}</span>
+                        <span className={`px-2 py-1 border-2 border-black text-xs font-bold ${
+                          invoice.status === "delivered" 
+                            ? "bg-[#6bcf7f] text-[#1a1a3e]"
+                            : invoice.status === "shipped"
+                            ? "bg-[#4ecdc4] text-[#1a1a3e]"
+                            : "bg-[#ffb347] text-[#1a1a3e]"
+                        }`}>
+                          {invoice.status.replace("-", " ").toUpperCase()}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </>
+              )}
             </div>
           </div>
 
