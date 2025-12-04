@@ -1,4 +1,4 @@
-CREATE OR REPLACE FUNCTION public.calculate_default_cost()
+thereCREATE OR REPLACE FUNCTION public.calculate_default_cost()
 RETURNS TRIGGER 
 LANGUAGE plpgsql
 AS $$
