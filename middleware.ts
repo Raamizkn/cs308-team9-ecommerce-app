@@ -28,7 +28,37 @@ export async function middleware(request: NextRequest) {
   )
 
   // Refresh session if expired - required for Server Components
-  await supabase.auth.getUser()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  const { pathname } = request.nextUrl
+
+  // Protected customer routes - redirect managers away
+  const customerRoutes = ['/profile', '/orders', '/cart']
+  const isCustomerRoute = customerRoutes.some(route => pathname.startsWith(route))
+
+  if (isCustomerRoute && user) {
+    // Check for sales manager
+    const { data: salesManager } = await supabase
+      .from("sales_managers")
+      .select("uid")
+      .eq("uid", user.id)
+      .maybeSingle()
+
+    if (salesManager) {
+      return NextResponse.redirect(new URL("/sales-manager/dashboard", request.url))
+    }
+
+    // Check for product manager
+    const { data: productManager } = await supabase
+      .from("product_managers")
+      .select("uid")
+      .eq("uid", user.id)
+      .maybeSingle()
+
+    if (productManager) {
+      return NextResponse.redirect(new URL("/product-manager", request.url))
+    }
+  }
 
   return supabaseResponse
 }

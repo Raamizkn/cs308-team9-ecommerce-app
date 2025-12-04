@@ -22,34 +22,9 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    checkSalesManagerRedirect()
     fetchUserData()
     fetchWishlist()
   }, [])
-
-  const checkSalesManagerRedirect = async () => {
-    try {
-      const supabase = getSupabaseBrowserClient()
-      const {
-        data: { user: authUser },
-      } = await supabase.auth.getUser()
-
-      if (authUser) {
-        const { data: salesManagerData } = await supabase
-          .from("sales_managers")
-          .select("uid")
-          .eq("uid", authUser.id)
-          .maybeSingle()
-
-        if (salesManagerData) {
-          router.push("/sales-manager/dashboard")
-          return
-        }
-      }
-    } catch (error) {
-      console.error("[Group9] Error checking sales manager:", error)
-    }
-  }
 
   const fetchUserData = async () => {
     try {

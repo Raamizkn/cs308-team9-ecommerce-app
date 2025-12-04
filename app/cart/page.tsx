@@ -8,11 +8,9 @@ import { useCart } from "@/lib/cart-context"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Minus, Plus, Trash2, ArrowLeft } from "lucide-react"
-import { useRouter } from "next/navigation"
 import { getSupabaseBrowserClient } from "@/lib/supabase/client"
 
 export default function CartPage() {
-  const router = useRouter()
   const { items, updateQuantity, removeItem, totalPrice, clearCart } = useCart()
   const [discountCode, setDiscountCode] = useState("")
   const [discount, setDiscount] = useState(0)
@@ -20,33 +18,8 @@ export default function CartPage() {
   const [stockWarnings, setStockWarnings] = useState<Record<string, string>>({})
 
   useEffect(() => {
-    checkSalesManagerRedirect()
     validateCartStock()
   }, [items])
-
-  const checkSalesManagerRedirect = async () => {
-    try {
-      const supabase = getSupabaseBrowserClient()
-      const {
-        data: { user: authUser },
-      } = await supabase.auth.getUser()
-
-      if (authUser) {
-        const { data: salesManagerData } = await supabase
-          .from("sales_managers")
-          .select("uid")
-          .eq("uid", authUser.id)
-          .maybeSingle()
-
-        if (salesManagerData) {
-          router.push("/sales-manager/dashboard")
-          return
-        }
-      }
-    } catch (error) {
-      console.error("[Group9] Error checking sales manager:", error)
-    }
-  }
 
   const validateCartStock = async () => {
     if (items.length === 0) {
