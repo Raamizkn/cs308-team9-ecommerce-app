@@ -127,7 +127,7 @@ export default function ProductManagerDashboardPage() {
   const router = useRouter()
   const { toast } = useToast()
   const [products, setProducts] = useState<ProductRecord[]>([])
-  const [categories, setCategories] = useState<string[]>([])
+  const [categories, setCategories] = useState<Array<{ cid: number; name: string }>>([])
   const [deliveries, setDeliveries] = useState<DeliveryRecord[]>(mockDeliveries)
   const [invoices, setInvoices] = useState<InvoiceRecord[]>([])
   const [loading, setLoading] = useState(true)
@@ -452,11 +452,14 @@ export default function ProductManagerDashboardPage() {
           throw new Error(error.error || "Failed to fetch categories")
         }
         const data = await response.json()
-        const categoryNames = (data.categories || []).map((cat: { name: string }) => cat.name)
-        setCategories(categoryNames)
+        const categoriesList = (data.categories || []).map((cat: { cid: number; name: string }) => ({
+          cid: cat.cid,
+          name: cat.name,
+        }))
+        setCategories(categoriesList)
         // Set default category if available
-        if (categoryNames.length > 0 && !newProduct.category) {
-          setNewProduct((prev) => ({ ...prev, category: categoryNames[0] }))
+        if (categoriesList.length > 0 && !newProduct.category) {
+          setNewProduct((prev) => ({ ...prev, category: categoriesList[0].name }))
         }
       } catch (error) {
         console.error("[Group9] Error fetching categories:", error)
@@ -524,33 +527,103 @@ export default function ProductManagerDashboardPage() {
     }
   }
 
-  const handleAddCategory = () => {
+  const handleAddCategory = async () => {
     if (!newCategory.trim()) {
-      return
-    }
-    if (categories.includes(newCategory.trim())) {
       toast({
-        title: "Category exists",
-        description: "This category is already tracked",
+        title: "Category name required",
+        description: "Please enter a category name",
+        variant: "destructive",
       })
       return
     }
 
-    setCategories((prev) => [...prev, newCategory.trim()])
-    setNewCategory("")
-    toast({
-      title: "Category added",
-      description: "Remember to persist this in Supabase",
-    })
+    // Check if category already exists locally
+    if (categories.some((cat) => cat.name.toLowerCase() === newCategory.trim().toLowerCase())) {
+      toast({
+        title: "Category exists",
+        description: "This category already exists",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      const response = await fetch("/api/categories", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ name: newCategory.trim() }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || "Failed to create category")
+      }
+
+      const data = await response.json()
+      
+      // Add new category to local state
+      setCategories((prev) => [...prev, { cid: data.category.cid, name: data.category.name }])
+      setNewCategory("")
+      
+      toast({
+        title: "Category added",
+        description: `${data.category.name} has been successfully added`,
+      })
+    } catch (error) {
+      console.error("[Group9] Error adding category:", error)
+      toast({
+        title: "Error adding category",
+        description: error instanceof Error ? error.message : "Failed to add category",
+        variant: "destructive",
+      })
+    }
   }
 
-  const handleRemoveCategory = (name: string) => {
-    setCategories((prev) => prev.filter((category) => category !== name))
-    toast({
-      title: "Category removed",
-      description: `Removed ${name} from catalog tracking`,
-      variant: "destructive",
-    })
+  const handleRemoveCategory = async (categoryToRemove: { cid: number; name: string }) => {
+    if (!confirm(`Are you sure you want to delete "${categoryToRemove.name}"? This action cannot be undone.`)) {
+      return
+    }
+
+    try {
+      const response = await fetch(`/api/categories?cid=${categoryToRemove.cid}`, {
+        method: "DELETE",
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || "Failed to delete category")
+      }
+
+      // Remove category from local state
+      setCategories((prev) => {
+        const updated = prev.filter((category) => category.cid !== categoryToRemove.cid)
+        
+        // If the deleted category was selected for new product, update it
+        if (newProduct.category === categoryToRemove.name) {
+          setNewProduct((prevProduct) => ({
+            ...prevProduct,
+            category: updated.length > 0 ? updated[0]?.name || "" : "",
+          }))
+        }
+        
+        return updated
+      })
+      
+      toast({
+        title: "Category removed",
+        description: `${categoryToRemove.name} has been successfully removed`,
+        variant: "destructive",
+      })
+    } catch (error) {
+      console.error("[Group9] Error removing category:", error)
+      toast({
+        title: "Error removing category",
+        description: error instanceof Error ? error.message : "Failed to remove category",
+        variant: "destructive",
+      })
+    }
   }
 
   const handleRemoveProduct = async (pid: number) => {
@@ -821,8 +894,8 @@ export default function ProductManagerDashboardPage() {
                   </SelectTrigger>
                   <SelectContent>
                     {categories.map((category) => (
-                      <SelectItem key={category} value={category}>
-                        {category}
+                      <SelectItem key={category.cid} value={category.name}>
+                        {category.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -895,15 +968,15 @@ export default function ProductManagerDashboardPage() {
               <div className="flex flex-wrap gap-2">
                 {categories.map((category) => (
                   <span
-                    key={category}
+                    key={category.cid}
                     className="flex items-center gap-2 px-3 py-2 bg-[#e9ecef] border-2 border-black text-sm font-bold text-[#1a1a3e]"
                   >
-                    {category}
+                    {category.name}
                     <button
                       type="button"
                       onClick={() => handleRemoveCategory(category)}
                       className="text-[#dc3545] hover:text-black"
-                      aria-label={`Remove ${category}`}
+                      aria-label={`Remove ${category.name}`}
                     >
                       <X className="h-3 w-3" />
                     </button>
@@ -920,10 +993,6 @@ export default function ProductManagerDashboardPage() {
                 <Button onClick={handleAddCategory} className="bg-[#1a1a3e] text-white border-4 border-black font-bold">
                   ADD
                 </Button>
-              </div>
-              <div className="bg-[#f8f9fa] border-2 border-dashed border-black p-4 text-sm text-[#6c757d]">
-                TODO: Wire this section into `/api/product-manager/categories` (Supabase `categories` table). The product manager
-                should be the only role allowed to mutate categories.
               </div>
             </div>
           </div>
