@@ -9,18 +9,14 @@ import { Button } from "@/components/ui/button"
 import { getSupabaseBrowserClient } from "@/lib/supabase/client"
 import { ArrowLeft, Package, Truck, CheckCircle, XCircle, Download, AlertCircle } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
-import { Textarea } from "@/components/ui/textarea"
-import { Label } from "@/components/ui/label"
 import { pdf } from "@react-pdf/renderer"
 import { InvoicePDF } from "@/components/invoice-pdf"
+
+interface RefundSummary {
+  approved: number
+  pending: number
+  rejected: number
+}
 
 export default function OrderDetailPage() {
   const params = useParams()
@@ -28,14 +24,68 @@ export default function OrderDetailPage() {
   const { toast } = useToast()
   const [order, setOrder] = useState<any>(null)
   const [loading, setLoading] = useState(true)
-  const [refundReason, setRefundReason] = useState("")
-  const [refundDialogOpen, setRefundDialogOpen] = useState(false)
+  const [refundSummaryByItem, setRefundSummaryByItem] = useState<Record<string, RefundSummary>>({})
+  const [selectedQty, setSelectedQty] = useState<Record<string, number>>({})
+  const [submittingItem, setSubmittingItem] = useState<string | null>(null)
   const [isCancelling, setIsCancelling] = useState(false)
   const [downloadingPdf, setDownloadingPdf] = useState(false)
 
   useEffect(() => {
     fetchOrderDetails()
   }, [params.id])
+
+  const isWithinRefundWindow = (createdAt: string) => {
+    const purchaseDate = new Date(createdAt)
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+    return purchaseDate >= thirtyDaysAgo
+  }
+
+  const remainingRefundableQty = (itemId: string, purchasedQty: number) => {
+    const summary = refundSummaryByItem[itemId]
+    if (!summary) return purchasedQty
+    const reservedQty = summary.approved + summary.pending
+    const remaining = purchasedQty - reservedQty
+    return remaining > 0 ? remaining : 0
+  }
+
+  const loadRefundSummaries = async (supabaseClient: any, orderData: any) => {
+    if (!orderData?.order_items) {
+      setRefundSummaryByItem({})
+      return
+    }
+
+    const itemIds = orderData.order_items.map((item: any) => item.id)
+
+    if (itemIds.length === 0) {
+      setRefundSummaryByItem({})
+      return
+    }
+
+    const { data: refunds, error } = await supabaseClient
+      .from("refund_requests")
+      .select("order_item_id, quantity, status")
+      .in("order_item_id", itemIds)
+
+    if (error) {
+      console.error("[Group9] Error fetching refunds:", error)
+      setRefundSummaryByItem({})
+      return
+    }
+
+    const summaries: Record<string, RefundSummary> = {}
+    refunds?.forEach((row: { order_item_id: string; quantity: number; status: string }) => {
+      const current = summaries[row.order_item_id] ?? { approved: 0, pending: 0, rejected: 0 }
+      if (row.status === "approved") {
+        current.approved += row.quantity
+      } else if (row.status === "pending") {
+        current.pending += row.quantity
+      } else if (row.status === "rejected") {
+        current.rejected += row.quantity
+      }
+      summaries[row.order_item_id] = current
+    })
+    setRefundSummaryByItem(summaries)
+  }
 
   const fetchOrderDetails = async () => {
     try {
@@ -47,6 +97,9 @@ export default function OrderDetailPage() {
         .single()
 
       setOrder(data)
+      if (data) {
+        await loadRefundSummaries(supabase, data)
+      }
     } catch (error) {
       console.error("[Group9] Error fetching order:", error)
     } finally {
@@ -54,40 +107,34 @@ export default function OrderDetailPage() {
     }
   }
 
-  const handleRefundRequest = async () => {
-    if (!refundReason.trim()) {
-      toast({
-        title: "Reason required",
-        description: "Please provide a reason for the refund request",
-        variant: "destructive",
-      })
-      return
-    }
-
+  const handleRequestRefund = async (orderId: string, itemId: string) => {
     try {
+      setSubmittingItem(itemId)
       const supabase = getSupabaseBrowserClient()
       const {
         data: { user },
       } = await supabase.auth.getUser()
 
-      if (!user) return
+      if (!user) {
+        toast({
+          title: "Please log in",
+          description: "You must be signed in to request a refund.",
+          variant: "destructive",
+        })
+        return
+      }
 
-      const response = await fetch("/api/refunds", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          order_id: order.id,
-          user_id: user.id,
-          reason: refundReason,
-        }),
+      const qty = selectedQty[itemId] ?? 1
+      const { error } = await supabase.rpc("create_refund_request", {
+        p_user_id: user.id,
+        p_order_item_id: itemId,
+        p_quantity: qty,
       })
 
-      const data = await response.json()
-
-      if (data.error) {
+      if (error) {
         toast({
-          title: "Request failed",
-          description: data.error,
+          title: "Refund failed",
+          description: error.message,
           variant: "destructive",
         })
         return
@@ -95,18 +142,19 @@ export default function OrderDetailPage() {
 
       toast({
         title: "Refund requested",
-        description: "Your refund request has been submitted for review",
+        description: "We'll review your request shortly.",
       })
 
-      setRefundDialogOpen(false)
-      setRefundReason("")
+      await fetchOrderDetails()
     } catch (error) {
-      console.error("[Group9] Error requesting refund:", error)
+      console.error("[Group9] Refund request error:", error)
       toast({
-        title: "Request failed",
-        description: "Something went wrong. Please try again.",
+        title: "Refund failed",
+        description: "Unexpected error requesting refund.",
         variant: "destructive",
       })
+    } finally {
+      setSubmittingItem(null)
     }
   }
 
@@ -352,23 +400,92 @@ export default function OrderDetailPage() {
               <h2 className="font-bold text-2xl text-[#1a1a3e] mb-6">ORDER ITEMS</h2>
               <div className="space-y-4">
                 {order.order_items?.map((item: any) => (
-                  <div key={item.id} className="flex gap-4 pb-4 border-b-4 border-[#e9ecef] last:border-0">
-                    <div className="relative w-20 h-20 bg-[#4ecdc4] border-4 border-black flex-shrink-0">
-                      <Image
-                        src={item.products?.image_url || "/placeholder.svg"}
-                        alt={item.products?.name || "Product"}
-                        fill
-                        className="object-cover"
-                      />
+                  <div key={item.id} className="pb-4 border-b-4 border-[#e9ecef] last:border-0">
+                    <div className="flex gap-4 mb-2">
+                      <div className="relative w-20 h-20 bg-[#4ecdc4] border-4 border-black flex-shrink-0">
+                        <Image
+                          src={item.products?.image_url || "/placeholder.svg"}
+                          alt={item.products?.name || "Product"}
+                          fill
+                          className="object-cover"
+                        />
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="font-bold text-lg text-[#1a1a3e]">{item.products?.name}</h3>
+                        <p className="text-sm text-[#6c757d]">Quantity: {item.quantity}</p>
+                        <p className="font-bold text-[#5b3a8f]">${item.price.toFixed(2)} each</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-bold text-xl text-[#1a1a3e]">${(item.price * item.quantity).toFixed(2)}</p>
+                      </div>
                     </div>
-                    <div className="flex-1">
-                      <h3 className="font-bold text-lg text-[#1a1a3e]">{item.products?.name}</h3>
-                      <p className="text-sm text-[#6c757d]">Quantity: {item.quantity}</p>
-                      <p className="font-bold text-[#5b3a8f]">${item.price.toFixed(2)} each</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-bold text-xl text-[#1a1a3e]">${(item.price * item.quantity).toFixed(2)}</p>
-                    </div>
+                    {/* Refund Controls */}
+                    {order.status === "delivered" && isWithinRefundWindow(order.created_at) ? (
+                      (() => {
+                        const summary = refundSummaryByItem[item.id]
+                        const remaining = remainingRefundableQty(item.id, item.quantity)
+                        const pendingQty = summary?.pending ?? 0
+                        const approvedQty = summary?.approved ?? 0
+                        
+                        // Show fully refunded if all items are approved
+                        if (approvedQty >= item.quantity) {
+                          return <p className="text-xs text-green-600 mt-2 ml-24">Fully refunded</p>
+                        }
+                        
+                        // Show refund controls with pending/approved info
+                        return (
+                          <div className="mt-2 ml-24 space-y-1">
+                            {/* Show pending refund info if exists */}
+                            {pendingQty > 0 && (
+                              <p className="text-xs text-[#ff9800] font-semibold">
+                                ⏳ Refund request pending: {pendingQty} item{pendingQty > 1 ? "s" : ""} awaiting review
+                              </p>
+                            )}
+                            {/* Show approved refund info if exists */}
+                            {approvedQty > 0 && (
+                              <p className="text-xs text-green-600 font-semibold">
+                                ✓ {approvedQty} item{approvedQty > 1 ? "s" : ""} refunded
+                              </p>
+                            )}
+                            {/* Show refund controls if there's remaining quantity */}
+                            {remaining > 0 ? (
+                              <div className="flex flex-wrap items-center gap-2">
+                                <select
+                                  className="border border-black px-2 py-1 text-xs"
+                                  value={selectedQty[item.id] ?? 1}
+                                  onChange={(e) =>
+                                    setSelectedQty((prev) => ({
+                                      ...prev,
+                                      [item.id]: Number(e.target.value),
+                                    }))
+                                  }
+                                >
+                                  {Array.from({ length: remaining }, (_, i) => i + 1).map((qty) => (
+                                    <option key={qty} value={qty}>
+                                      {qty}
+                                    </option>
+                                  ))}
+                                </select>
+                                <Button
+                                  size="sm"
+                                  className="bg-[#ffb347] hover:bg-[#ffd93d] text-black border-4 border-black"
+                                  disabled={submittingItem === item.id}
+                                  onClick={() => handleRequestRefund(order.id, item.id)}
+                                >
+                                  {submittingItem === item.id ? "Submitting..." : "Request Refund"}
+                                </Button>
+                              </div>
+                            ) : pendingQty > 0 ? (
+                              <p className="text-xs text-[#ff9800] mt-1">
+                                All items have refund requests pending review
+                              </p>
+                            ) : null}
+                          </div>
+                        )
+                      })()
+                    ) : order.status === "delivered" ? (
+                      <p className="text-xs text-[#adb5bd] mt-2 ml-24">Refund window closed</p>
+                    ) : null}
                   </div>
                 ))}
               </div>
@@ -422,43 +539,6 @@ export default function OrderDetailPage() {
                   )}
                 </Button>
 
-                {order.status === "delivered" && (
-                  <Dialog open={refundDialogOpen} onOpenChange={setRefundDialogOpen}>
-                    <DialogTrigger asChild>
-                      <Button className="w-full bg-white text-[#dc3545] border-4 border-black font-bold hover:bg-[#dc3545] hover:text-white">
-                        REQUEST REFUND
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent className="bg-white border-4 border-black max-w-md">
-                      <DialogHeader>
-                        <DialogTitle className="font-bold text-2xl text-[#1a1a3e]">Request Refund</DialogTitle>
-                        <DialogDescription className="text-[#6c757d]">
-                          Please provide a reason for your refund request
-                        </DialogDescription>
-                      </DialogHeader>
-                      <div className="space-y-4">
-                        <div>
-                          <Label htmlFor="reason" className="font-bold text-[#1a1a3e]">
-                            Reason
-                          </Label>
-                          <Textarea
-                            id="reason"
-                            value={refundReason}
-                            onChange={(e) => setRefundReason(e.target.value)}
-                            placeholder="Please explain why you want a refund..."
-                            className="border-4 border-black mt-2 min-h-32"
-                          />
-                        </div>
-                        <Button
-                          onClick={handleRefundRequest}
-                          className="w-full bg-[#ffb347] hover:bg-[#ffd93d] text-black border-4 border-black font-bold"
-                        >
-                          SUBMIT REQUEST
-                        </Button>
-                      </div>
-                    </DialogContent>
-                  </Dialog>
-                )}
 
                 {order.status === "processing" && (
                   <Button
