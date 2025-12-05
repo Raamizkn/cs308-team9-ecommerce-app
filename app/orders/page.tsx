@@ -345,7 +345,7 @@ export default function OrdersPage() {
                       <ul className="space-y-1">
                         {order.order_items?.map((item: any) => (
                           <li key={item.id} className="text-sm text-[#6c757d]">
-                            {item.products?.name} x{item.quantity} - ${(item.price * item.quantity).toFixed(2)}
+                            {item.products_belong_to?.name} x{item.quantity} - ${(item.price * item.quantity).toFixed(2)}
                             {order.status === "delivered" && isWithinRefundWindow(order.created_at) ? (
                               (() => {
                                 const summary = refundSummaryByItem[item.id]

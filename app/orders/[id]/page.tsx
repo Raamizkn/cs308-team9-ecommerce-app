@@ -404,14 +404,14 @@ export default function OrderDetailPage() {
                     <div className="flex gap-4 mb-2">
                       <div className="relative w-20 h-20 bg-[#4ecdc4] border-4 border-black flex-shrink-0">
                         <Image
-                          src={item.products?.image_url || "/placeholder.svg"}
-                          alt={item.products?.name || "Product"}
+                          src={item.products_belong_to?.image_url || "/placeholder.svg"}
+                          alt={item.products_belong_to?.name || "Product"}
                           fill
                           className="object-cover"
                         />
                       </div>
                       <div className="flex-1">
-                        <h3 className="font-bold text-lg text-[#1a1a3e]">{item.products?.name}</h3>
+                        <h3 className="font-bold text-lg text-[#1a1a3e]">{item.products_belong_to?.name}</h3>
                         <p className="text-sm text-[#6c757d]">Quantity: {item.quantity}</p>
                         <p className="font-bold text-[#5b3a8f]">${item.price.toFixed(2)} each</p>
                       </div>
