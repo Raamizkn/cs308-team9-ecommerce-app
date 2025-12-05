@@ -429,23 +429,33 @@ export default function OrderDetailPage() {
 
                         // Show fully refunded if all items are approved
                         if (approvedQty >= item.quantity) {
-                          return <p className="text-xs text-green-600 mt-2 ml-24">Fully refunded</p>
+                          return (
+                            <div className="mt-3 ml-24 bg-[#d4edda] border-2 border-[#28a745] p-3 flex items-center gap-2">
+                              <CheckCircle className="h-5 w-5 text-[#155724]" />
+                              <p className="text-sm font-bold text-[#155724]">FULLY REFUNDED</p>
+                            </div>
+                          )
                         }
 
                         // Show refund controls with pending/approved info
                         return (
                           <div className="mt-2 ml-24 space-y-1">
-                            {/* Show pending refund info if exists */}
                             {pendingQty > 0 && (
-                              <p className="text-xs text-[#ff9800] font-semibold">
-                                ⏳ Refund request pending: {pendingQty} item{pendingQty > 1 ? "s" : ""} awaiting review
-                              </p>
+                              <div className="bg-[#fff3cd] border-2 border-[#ff9800] p-3 flex items-center gap-2">
+                                <div className="animate-pulse">⏳</div>
+                                <p className="text-sm font-bold text-[#856404]">
+                                  REFUND REQUEST PENDING: {pendingQty} item{pendingQty > 1 ? "s" : ""} awaiting review
+                                </p>
+                              </div>
                             )}
                             {/* Show approved refund info if exists */}
                             {approvedQty > 0 && (
-                              <p className="text-xs text-green-600 font-semibold">
-                                ✓ {approvedQty} item{approvedQty > 1 ? "s" : ""} refunded
-                              </p>
+                              <div className="bg-[#d4edda] border-2 border-[#28a745] p-3 flex items-center gap-2">
+                                <CheckCircle className="h-5 w-5 text-[#155724]" />
+                                <p className="text-sm font-bold text-[#155724]">
+                                  {approvedQty} item{approvedQty > 1 ? "s" : ""} REFUNDED
+                                </p>
+                              </div>
                             )}
                             {/* Show refund controls if there's remaining quantity */}
                             {remaining > 0 ? (
