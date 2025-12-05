@@ -249,7 +249,7 @@ export default function OrderDetailPage() {
     switch (status) {
       case "delivered":
         return <CheckCircle className="h-8 w-8 text-[#6bcf7f]" />
-      case "shipped":
+      case "in-transit":
         return <Truck className="h-8 w-8 text-[#4ecdc4]" />
       case "processing":
         return <Package className="h-8 w-8 text-[#ffb347]" />
@@ -264,7 +264,7 @@ export default function OrderDetailPage() {
     switch (status) {
       case "delivered":
         return "bg-[#6bcf7f]"
-      case "shipped":
+      case "in-transit":
         return "bg-[#4ecdc4]"
       case "processing":
         return "bg-[#ffb347]"
@@ -357,9 +357,9 @@ export default function OrderDetailPage() {
 
                 <div className="flex items-center gap-4">
                   <div
-                    className={`w-8 h-8 ${order.status !== "pending" ? "bg-[#6bcf7f]" : "bg-[#e9ecef]"} border-4 border-black flex items-center justify-center flex-shrink-0`}
+                    className={`w-8 h-8 ${order.status === "processing" || order.status === "in-transit" || order.status === "delivered" ? "bg-[#6bcf7f]" : "bg-[#e9ecef]"} border-4 border-black flex items-center justify-center flex-shrink-0`}
                   >
-                    {order.status !== "pending" && <CheckCircle className="h-4 w-4 text-white" />}
+                    {(order.status === "processing" || order.status === "in-transit" || order.status === "delivered") && <CheckCircle className="h-4 w-4 text-white" />}
                   </div>
                   <div className="flex-1">
                     <p className="font-bold text-[#1a1a3e]">Processing</p>
@@ -369,14 +369,14 @@ export default function OrderDetailPage() {
 
                 <div className="flex items-center gap-4">
                   <div
-                    className={`w-8 h-8 ${order.status === "shipped" || order.status === "delivered" ? "bg-[#6bcf7f]" : "bg-[#e9ecef]"} border-4 border-black flex items-center justify-center flex-shrink-0`}
+                    className={`w-8 h-8 ${order.status === "in-transit" || order.status === "delivered" ? "bg-[#6bcf7f]" : "bg-[#e9ecef]"} border-4 border-black flex items-center justify-center flex-shrink-0`}
                   >
-                    {(order.status === "shipped" || order.status === "delivered") && (
+                    {(order.status === "in-transit" || order.status === "delivered") && (
                       <CheckCircle className="h-4 w-4 text-white" />
                     )}
                   </div>
                   <div className="flex-1">
-                    <p className="font-bold text-[#1a1a3e]">Shipped</p>
+                    <p className="font-bold text-[#1a1a3e]">In-Transit</p>
                     <p className="text-sm text-[#6c757d]">Your order is on the way</p>
                   </div>
                 </div>
@@ -426,12 +426,12 @@ export default function OrderDetailPage() {
                         const remaining = remainingRefundableQty(item.id, item.quantity)
                         const pendingQty = summary?.pending ?? 0
                         const approvedQty = summary?.approved ?? 0
-                        
+
                         // Show fully refunded if all items are approved
                         if (approvedQty >= item.quantity) {
                           return <p className="text-xs text-green-600 mt-2 ml-24">Fully refunded</p>
                         }
-                        
+
                         // Show refund controls with pending/approved info
                         return (
                           <div className="mt-2 ml-24 space-y-1">

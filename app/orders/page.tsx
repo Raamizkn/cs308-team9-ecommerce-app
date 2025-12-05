@@ -140,7 +140,7 @@ export default function OrdersPage() {
             .select("*")
             .eq("user_id", user.id)
             .order("created_at", { ascending: false })
-          
+
           fetchedOrders = ordersOnly || []
         } else {
           fetchedOrders = data || []
@@ -231,7 +231,7 @@ export default function OrdersPage() {
     switch (status) {
       case "delivered":
         return "bg-[#6bcf7f]"
-      case "shipped":
+      case "in-transit":
         return "bg-[#4ecdc4]"
       case "processing":
         return "bg-[#ffb347]"
@@ -352,12 +352,12 @@ export default function OrdersPage() {
                                 const remaining = remainingRefundableQty(item.id, item.quantity)
                                 const pendingQty = summary?.pending ?? 0
                                 const approvedQty = summary?.approved ?? 0
-                                
+
                                 // Show fully refunded if all items are approved
                                 if (approvedQty >= item.quantity) {
                                   return <p className="text-xs text-green-600 mt-1">Fully refunded</p>
                                 }
-                                
+
                                 // Show refund controls with pending/approved info
                                 return (
                                   <div className="mt-2 space-y-1">
