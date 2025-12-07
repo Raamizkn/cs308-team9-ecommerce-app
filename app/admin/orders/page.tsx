@@ -108,9 +108,8 @@ export default function OrderManagementPage() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="pending">PENDING</SelectItem>
                       <SelectItem value="processing">PROCESSING</SelectItem>
-                      <SelectItem value="shipped">SHIPPED</SelectItem>
+                      <SelectItem value="in-transit">IN-TRANSIT</SelectItem>
                       <SelectItem value="delivered">DELIVERED</SelectItem>
                       <SelectItem value="cancelled">CANCELLED</SelectItem>
                     </SelectContent>

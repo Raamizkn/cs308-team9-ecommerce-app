@@ -111,17 +111,17 @@ export default function RefundRequestsPage() {
       // Get unique user IDs and fetch their profiles
       const userIds = [...new Set((refundsData || []).map((refund: any) => refund.order_items?.orders?.user_id).filter(Boolean))]
       const profilesMap: Record<string, string | null> = {}
-      
+
       if (userIds.length > 0) {
         const { data: profilesData, error: profilesError } = await supabase
           .from("profiles")
           .select("uid, name")
           .in("uid", userIds)
-        
+
         if (profilesError) {
           console.error("[Group9] Error fetching profiles:", profilesError)
         }
-        
+
         if (profilesData) {
           profilesData.forEach((profile: any) => {
             profilesMap[profile.uid] = profile.name
@@ -134,14 +134,14 @@ export default function RefundRequestsPage() {
         const orderItem = refund.order_items
         const order = orderItem?.orders
         const product = orderItem?.products_belong_to
-        
+
         if (!order || !product) {
           console.error("[Group9] Missing order or product data for refund:", refund.id)
           return null
         }
-        
+
         const customerName = order.user_id ? (profilesMap[order.user_id] || null) : null
-        
+
         // Calculate refund amount
         const refundAmount = parseFloat(orderItem.price || 0) * (refund.quantity || 0)
 
@@ -161,7 +161,7 @@ export default function RefundRequestsPage() {
           customer_id: order.user_id || "",
           customer_name: customerName || "Unknown Customer",
         }
-      }).filter((refund): refund is RefundRequest => refund !== null)
+      }).filter((refund: RefundRequest | null): refund is RefundRequest => refund !== null)
 
       setRefunds(formattedRefunds)
     } catch (error) {
@@ -175,13 +175,43 @@ export default function RefundRequestsPage() {
   }
 
   const handleRefundDecision = async (refundId: string, approve: boolean) => {
-    // This function will be implemented in the next step
-    // For now, just show a message that this feature is not yet implemented
-    toast({
-      title: "Not implemented",
-      description: "Refund approval/rejection will be implemented in the next step.",
-      variant: "default",
-    })
+    try {
+      setProcessing(refundId)
+      const decision = approve ? "approve" : "reject"
+
+      const response = await fetch(`/api/refunds/${refundId}/decision`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ decision }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || "Failed to process refund")
+      }
+
+      toast({
+        title: "Success",
+        description: `Refund request ${decision}ed successfully`,
+        variant: "default",
+        className: "bg-[#6bcf7f] text-[#1a1a3e] border-4 border-black"
+      })
+
+      // Refresh list
+      await loadRefunds()
+
+    } catch (error) {
+      console.error("[Group9] Error processing refund:", error)
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to process refund",
+        variant: "destructive",
+      })
+    } finally {
+      setProcessing(null)
+    }
   }
 
   const formatDate = (dateString: string) => {
@@ -337,9 +367,8 @@ export default function RefundRequestsPage() {
               return (
                 <div
                   key={refund.id}
-                  className={`bg-white border-4 border-black pixel-shadow-sm ${
-                    !withinWindow ? "opacity-75" : ""
-                  }`}
+                  className={`bg-white border-4 border-black pixel-shadow-sm ${!withinWindow ? "opacity-75" : ""
+                    }`}
                 >
                   <div className="p-6">
                     <div className="flex items-start justify-between mb-4">

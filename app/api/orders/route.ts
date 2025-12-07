@@ -17,13 +17,13 @@ export async function POST(request: Request) {
       data: { user },
       error: userError,
     } = await supabase.auth.getUser()
-    
+
     const userId = user?.id || null
-    
+
     if (userError) {
       console.error("[Group9] Error getting user:", userError)
     }
-    
+
     if (!userId) {
       console.warn("[Group9] No authenticated user found - order will be created without user_id")
     } else {
@@ -32,12 +32,12 @@ export async function POST(request: Request) {
 
     // ===== CRITICAL: Validate stock availability BEFORE creating order =====
     console.log("[Group9] Validating stock availability for", items.length, "items")
-    
+
     const stockValidationErrors: string[] = []
-    
+
     for (const item of items) {
       const productId = parseInt(item.product_id, 10)
-      
+
       // Fetch current stock from database
       const { data: product, error: productError } = await supabase
         .from("products_belong_to")
@@ -57,7 +57,7 @@ export async function POST(request: Request) {
           `[Group9] Insufficient stock for product ${product.name} (ID: ${productId}). ` +
           `Requested: ${item.quantity}, Available: ${product.stock_quantity}`
         )
-        
+
         if (product.stock_quantity === 0) {
           stockValidationErrors.push(`${product.name} is out of stock`)
         } else {
@@ -90,7 +90,7 @@ export async function POST(request: Request) {
         total,
         shipping_address,
         payment_method,
-        status: "pending",
+        status: "processing",
       })
       .select()
       .single()
@@ -119,7 +119,7 @@ export async function POST(request: Request) {
 
     // Update product stock (now with proper error handling)
     console.log("[Group9] Decrementing stock for order:", order.id)
-    
+
     for (const item of items) {
       const { error: stockError } = await supabase.rpc("decrement_stock", {
         product_id: item.product_id,

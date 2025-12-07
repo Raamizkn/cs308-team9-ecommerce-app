@@ -136,13 +136,12 @@ export default function SalesAnalyticsPage() {
                   <div className="text-right">
                     <p className="font-bold text-xl text-[#5b3a8f]">${order.total.toFixed(2)}</p>
                     <span
-                      className={`text-xs px-2 py-1 border-2 border-black font-bold ${
-                        order.status === "delivered"
+                      className={`text-xs px-2 py-1 border-2 border-black font-bold ${order.status === "delivered"
                           ? "bg-[#6bcf7f]"
-                          : order.status === "shipped"
+                          : order.status === "in-transit"
                             ? "bg-[#4ecdc4]"
                             : "bg-[#ffb347]"
-                      }`}
+                        }`}
                     >
                       {order.status.toUpperCase()}
                     </span>

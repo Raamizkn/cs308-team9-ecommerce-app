@@ -4,7 +4,7 @@ CREATE TABLE IF NOT EXISTS public.orders (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID,
   total NUMERIC(10, 2) NOT NULL,
-  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'shipped', 'delivered', 'cancelled')),
+  status TEXT NOT NULL DEFAULT 'processing' CHECK (status IN ('processing', 'in-transit', 'delivered', 'cancelled')),
   shipping_address TEXT NOT NULL,
   payment_method TEXT NOT NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
