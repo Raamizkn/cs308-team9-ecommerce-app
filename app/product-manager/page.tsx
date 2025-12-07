@@ -34,6 +34,8 @@ interface DeliveryRecord {
   total: number
   status: "packing" | "in-transit" | "delivered"
   dueDate: string
+  orderId?: string // Store actual order ID for status updates
+  orderItemId?: string // Store order item ID
 }
 
 interface InvoiceRecord {
@@ -89,50 +91,17 @@ const mockProducts: ProductRecord[] = [
   },
 ]
 
-const mockDeliveries: DeliveryRecord[] = [
-  {
-    id: "DLV-98231",
-    customer: "John Doe",
-    address: "Pixel Street 42, Istanbul",
-    product: "Retro Pixel Console",
-    quantity: 1,
-    total: 299.99,
-    status: "packing",
-    dueDate: "2025-11-30",
-  },
-  {
-    id: "DLV-98232",
-    customer: "Amelia Stone",
-    address: "Arcade Ave 18, Ankara",
-    product: "Arcade Fight Stick",
-    quantity: 2,
-    total: 298.0,
-    status: "in-transit",
-    dueDate: "2025-12-02",
-  },
-  {
-    id: "DLV-98233",
-    customer: "Rafael Green",
-    address: "Console Blvd 7, Izmir",
-    product: "8-bit Collector Figure",
-    quantity: 1,
-    total: 89.99,
-    status: "delivered",
-    dueDate: "2025-11-27",
-  },
-]
-
-
 export default function ProductManagerDashboardPage() {
   const router = useRouter()
   const { toast } = useToast()
   const [products, setProducts] = useState<ProductRecord[]>([])
   const [categories, setCategories] = useState<Array<{ cid: number; name: string }>>([])
-  const [deliveries, setDeliveries] = useState<DeliveryRecord[]>(mockDeliveries)
+  const [deliveries, setDeliveries] = useState<DeliveryRecord[]>([])
   const [invoices, setInvoices] = useState<InvoiceRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [loadingCategories, setLoadingCategories] = useState(true)
   const [loadingInvoices, setLoadingInvoices] = useState(true)
+  const [loadingDeliveries, setLoadingDeliveries] = useState(true)
   const [user, setUser] = useState<any>(null)
   const [checkingAccess, setCheckingAccess] = useState(true)
   const [downloadingInvoiceId, setDownloadingInvoiceId] = useState<string | null>(null)
@@ -193,9 +162,10 @@ export default function ProductManagerDashboardPage() {
         name: profileData?.name || authUser.email?.split("@")[0] || "Product Manager",
       })
 
-      // Fetch products and invoices after access is confirmed
+      // Fetch products, invoices, and deliveries after access is confirmed
       fetchProducts()
       fetchInvoices()
+      fetchDeliveries()
     } catch (error) {
       console.error("[Group9] Error checking product manager access:", error)
       router.push("/login")
@@ -226,12 +196,12 @@ export default function ProductManagerDashboardPage() {
     }
   }
 
-  const fetchInvoices = async () => {
+  const fetchDeliveries = async () => {
     try {
-      setLoadingInvoices(true)
+      setLoadingDeliveries(true)
       const supabase = getSupabaseBrowserClient()
       
-      // Fetch all orders with their items and products
+      // Fetch all orders with their items, products, and customer info via join
       const { data: ordersData, error: ordersError } = await supabase
         .from("orders")
         .select(`
@@ -256,18 +226,92 @@ export default function ProductManagerDashboardPage() {
         throw ordersError
       }
 
-      // Fetch customer names from profiles
-      const userIds = [...new Set((ordersData || []).map((order: any) => order.user_id).filter(Boolean))]
-      const { data: profilesData } = await supabase
-        .from("profiles")
-        .select("uid, name")
-        .in("uid", userIds)
+      // Transform orders into delivery records
+      const deliveryRecords: DeliveryRecord[] = (ordersData || []).flatMap((order: any) => {
+        // Simple customer name - just use "Customer" for now
+        const customerName = order.user_id ? "Customer" : "Guest Customer"
+        
+        // Map each order item to a delivery record
+        return (order.order_items || []).map((item: any, index: number) => {
+          // Map order status to delivery status
+          let deliveryStatus: "packing" | "in-transit" | "delivered" = "packing"
+          if (order.status === "delivered") {
+            deliveryStatus = "delivered"
+          } else if (order.status === "shipped") {
+            deliveryStatus = "in-transit"
+          } else {
+            deliveryStatus = "packing"
+          }
 
-      const profilesMap = new Map((profilesData || []).map((p: any) => [p.uid, p.name]))
+          // Calculate due date (7 days from order creation)
+          const orderDate = new Date(order.created_at)
+          const dueDate = new Date(orderDate)
+          dueDate.setDate(dueDate.getDate() + 7)
+
+          return {
+            id: `${order.id.slice(0, 8).toUpperCase()}-${index + 1}`,
+            customer: customerName,
+            address: order.shipping_address || "Address not provided",
+            product: item.products_belong_to?.name || "Unknown Product",
+            quantity: item.quantity,
+            total: Number(item.price) * item.quantity,
+            status: deliveryStatus,
+            dueDate: dueDate.toISOString().split('T')[0],
+            orderId: order.id, // Store actual order ID for status updates
+            orderItemId: item.id, // Store order item ID
+          }
+        })
+      })
+
+      setDeliveries(deliveryRecords)
+    } catch (error) {
+      console.error("[Group9] Error fetching deliveries:", error)
+      toast({
+        title: "Error loading deliveries",
+        description: error instanceof Error ? error.message : "Failed to fetch deliveries",
+        variant: "destructive",
+      })
+      // Fallback to empty array on error
+      setDeliveries([])
+    } finally {
+      setLoadingDeliveries(false)
+    }
+  }
+
+  const fetchInvoices = async () => {
+    try {
+      setLoadingInvoices(true)
+      const supabase = getSupabaseBrowserClient()
+      
+      // Fetch all orders with their items, products, and customer info via join
+      const { data: ordersData, error: ordersError } = await supabase
+        .from("orders")
+        .select(`
+          id,
+          created_at,
+          total,
+          status,
+          shipping_address,
+          user_id,
+          order_items (
+            id,
+            quantity,
+            price,
+            products_belong_to (
+              name
+            )
+          )
+        `)
+        .order("created_at", { ascending: false })
+
+      if (ordersError) {
+        throw ordersError
+      }
 
       // Transform orders into invoice records
       const invoiceRecords: InvoiceRecord[] = (ordersData || []).map((order: any) => {
-        const customerName = order.user_id ? (profilesMap.get(order.user_id) || "Guest Customer") : "Guest Customer"
+        // Simple customer name - just use "Customer" for now
+        const customerName = order.user_id ? "Customer" : "Guest Customer"
         const firstProduct = order.order_items?.[0]?.products_belong_to?.name || "Product"
         
         // Determine status for display
@@ -659,12 +703,55 @@ export default function ProductManagerDashboardPage() {
     }
   }
 
-  const handleDeliveryStatus = (id: string, status: DeliveryRecord["status"]) => {
-    setDeliveries((prev) => prev.map((delivery) => (delivery.id === id ? { ...delivery, status } : delivery)))
-    toast({
-      title: "Delivery updated",
-      description: `Delivery ${id} marked as ${status}`,
-    })
+  const handleDeliveryStatus = async (id: string, status: DeliveryRecord["status"]) => {
+    try {
+      const delivery = deliveries.find((d) => d.id === id)
+      if (!delivery || !delivery.orderId) {
+        toast({
+          title: "Error",
+          description: "Order ID not found for this delivery",
+          variant: "destructive",
+        })
+        return
+      }
+
+      const supabase = getSupabaseBrowserClient()
+      
+      // Map delivery status to order status
+      let orderStatus: string = "pending"
+      if (status === "delivered") {
+        orderStatus = "delivered"
+      } else if (status === "in-transit") {
+        orderStatus = "shipped"
+      } else {
+        orderStatus = "processing"
+      }
+
+      // Update order status in database
+      const { error } = await supabase
+        .from("orders")
+        .update({ status: orderStatus })
+        .eq("id", delivery.orderId)
+
+      if (error) {
+        throw error
+      }
+
+      // Update local state
+      setDeliveries((prev) => prev.map((delivery) => (delivery.id === id ? { ...delivery, status } : delivery)))
+      
+      toast({
+        title: "Delivery updated",
+        description: `Delivery ${id} marked as ${status}`,
+      })
+    } catch (error) {
+      console.error("[Group9] Error updating delivery status:", error)
+      toast({
+        title: "Update failed",
+        description: error instanceof Error ? error.message : "Failed to update delivery status",
+        variant: "destructive",
+      })
+    }
   }
 
   const handleCreateProduct = async () => {
@@ -1004,8 +1091,18 @@ export default function ProductManagerDashboardPage() {
             <h2 className="font-[family-name:var(--font-pixel)] text-3xl text-[#1a1a3e]">Delivery & Fulfillment Board</h2>
             <p className="text-[#6c757d]">View every delivery record and update its status.</p>
           </div>
-          <div className="divide-y-2 divide-black">
-            {deliveries.map((delivery) => (
+          {loadingDeliveries ? (
+            <div className="p-6 text-center text-[#6c757d]">
+              Loading deliveries...
+            </div>
+          ) : deliveries.length === 0 ? (
+            <div className="p-6 text-center text-[#6c757d]">
+              <p className="font-bold mb-2">No deliveries found</p>
+              <p className="text-sm">Orders will appear here once customers place orders.</p>
+            </div>
+          ) : (
+            <div className="divide-y-2 divide-black">
+              {deliveries.map((delivery) => (
               <div key={delivery.id} className="p-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                 <div>
                   <div className="flex items-center gap-3 mb-2">
@@ -1042,7 +1139,8 @@ export default function ProductManagerDashboardPage() {
                 </div>
               </div>
             ))}
-          </div>
+            </div>
+          )}
         </section>
 
         {/* Invoices and Review */}
