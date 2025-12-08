@@ -133,6 +133,28 @@ export async function POST(request: Request) {
       }
     }
 
+    // Send invoice email via n8n (fire and forget - don't block order response)
+    if (customer_email) {
+      try {
+        const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
+        fetch(`${appUrl}/api/invoice/send`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            order_id: order.id,
+            customer_email: customer_email,
+            customer_name: customer_name || undefined,
+          }),
+        }).catch((error) => {
+          console.error("[Group9] Error triggering invoice email (non-blocking):", error)
+          // Don't fail the order if email fails
+        })
+      } catch (error) {
+        console.error("[Group9] Error triggering invoice email (non-blocking):", error)
+        // Don't fail the order if email fails
+      }
+    }
+
     return NextResponse.json({
       success: true,
       order_id: order.id,
