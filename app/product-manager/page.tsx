@@ -399,9 +399,9 @@ export default function ProductManagerDashboardPage() {
 
       // Calculate totals
       const subtotal = order.order_items?.reduce((sum: number, item: any) => sum + (item.price * item.quantity), 0) || 0
-      const shipping = 10.00
-      const tax = subtotal * 0.08
-      const total = subtotal + shipping + tax
+      const shipping = 0
+      const tax = 0
+      const total = subtotal
 
       // Prepare invoice data
       const invoiceData = {

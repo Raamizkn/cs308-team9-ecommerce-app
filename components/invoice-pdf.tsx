@@ -286,18 +286,6 @@ export const InvoicePDF = ({ data }: { data: InvoiceData }) => {
         <View style={{ alignItems: 'flex-end', marginTop: 10 }}>
           <View style={{ width: '50%' }}>
             <View style={styles.summaryBox}>
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Subtotal:</Text>
-                <Text style={styles.summaryValue}>${data.subtotal.toFixed(2)}</Text>
-              </View>
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Shipping:</Text>
-                <Text style={styles.summaryValue}>${data.shipping.toFixed(2)}</Text>
-              </View>
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Tax (8%):</Text>
-                <Text style={styles.summaryValue}>${data.tax.toFixed(2)}</Text>
-              </View>
               <View style={styles.totalRow}>
                 <Text style={styles.totalLabel}>TOTAL:</Text>
                 <Text style={styles.totalValue}>${data.total.toFixed(2)}</Text>
