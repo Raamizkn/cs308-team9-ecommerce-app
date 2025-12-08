@@ -32,6 +32,8 @@ export async function POST(request: Request) {
     const body = await request.json()
     const { order_id, customer_email, customer_name } = body
 
+    console.log("[Group9] /api/invoice/send invoked for order:", order_id)
+
     if (!order_id) {
       return NextResponse.json({ error: "order_id is required" }, { status: 400 })
     }

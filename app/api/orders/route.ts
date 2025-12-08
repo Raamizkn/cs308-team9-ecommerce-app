@@ -133,11 +133,14 @@ export async function POST(request: Request) {
       }
     }
 
-    // Send invoice email via n8n (fire and forget - don't block order response)
+    // Send invoice email via n8n (attempt with timeout, but don't fail order)
     if (customer_email) {
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 8000)
+
       try {
-        const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
-        fetch(`${appUrl}/api/invoice/send`, {
+        const invoiceResponse = await fetch(`${appUrl}/api/invoice/send`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -145,13 +148,21 @@ export async function POST(request: Request) {
             customer_email: customer_email,
             customer_name: customer_name || undefined,
           }),
-        }).catch((error) => {
-          console.error("[Group9] Error triggering invoice email (non-blocking):", error)
-          // Don't fail the order if email fails
+          signal: controller.signal,
         })
+
+        if (!invoiceResponse.ok) {
+          const errorText = await invoiceResponse.text().catch(() => "Unknown error")
+          console.error("[Group9] Invoice webhook responded with error:", errorText)
+        }
       } catch (error) {
-        console.error("[Group9] Error triggering invoice email (non-blocking):", error)
-        // Don't fail the order if email fails
+        if ((error as Error).name === "AbortError") {
+          console.error("[Group9] Invoice webhook request timed out")
+        } else {
+          console.error("[Group9] Error triggering invoice email:", error)
+        }
+      } finally {
+        clearTimeout(timeoutId)
       }
     }
 
