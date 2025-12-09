@@ -238,10 +238,31 @@ export default function ProductManagerDashboardPage() {
         throw ordersError
       }
 
+      // Fetch customer names from profiles
+      const userIds = [...new Set((ordersData || []).map((order: any) => order.user_id).filter(Boolean))]
+      const profilesMap: Record<string, string> = {}
+      
+      if (userIds.length > 0) {
+        const { data: profilesData, error: profilesError } = await supabase
+          .from("profiles")
+          .select("uid, name")
+          .in("uid", userIds)
+        
+        if (profilesError) {
+          console.error("[Group9] Error fetching profiles for deliveries:", profilesError)
+        } else if (profilesData) {
+          profilesData.forEach((profile: any) => {
+            profilesMap[profile.uid] = profile.name || "Customer"
+          })
+        }
+      }
+
       // Transform orders into delivery records
       const deliveryRecords: DeliveryRecord[] = (ordersData || []).flatMap((order: any) => {
-        // Simple customer name - just use "Customer" for now
-        const customerName = order.user_id ? "Customer" : "Guest Customer"
+        // Get customer name from profiles map, fallback to "Customer" or "Guest Customer"
+        const customerName = order.user_id 
+          ? (profilesMap[order.user_id] || "Customer")
+          : "Guest Customer"
         
         // Map each order item to a delivery record
         return (order.order_items || []).map((item: any, index: number) => {
@@ -249,10 +270,10 @@ export default function ProductManagerDashboardPage() {
           let deliveryStatus: "packing" | "in-transit" | "delivered" = "packing"
           if (order.status === "delivered") {
             deliveryStatus = "delivered"
-          } else if (order.status === "shipped") {
+          } else if (order.status === "in-transit") {
             deliveryStatus = "in-transit"
           } else {
-            deliveryStatus = "packing"
+            deliveryStatus = "packing" // Maps to 'processing' in DB
           }
 
           // Calculate due date (7 days from order creation)
@@ -320,18 +341,38 @@ export default function ProductManagerDashboardPage() {
         throw ordersError
       }
 
+      // Fetch customer names from profiles
+      const userIds = [...new Set((ordersData || []).map((order: any) => order.user_id).filter(Boolean))]
+      const profilesMap: Record<string, string> = {}
+      
+      if (userIds.length > 0) {
+        const { data: profilesData, error: profilesError } = await supabase
+          .from("profiles")
+          .select("uid, name")
+          .in("uid", userIds)
+        
+        if (profilesError) {
+          console.error("[Group9] Error fetching profiles for invoices:", profilesError)
+        } else if (profilesData) {
+          profilesData.forEach((profile: any) => {
+            profilesMap[profile.uid] = profile.name || "Customer"
+          })
+        }
+      }
+
       // Transform orders into invoice records
       const invoiceRecords: InvoiceRecord[] = (ordersData || []).map((order: any) => {
-        // Simple customer name - just use "Customer" for now
-        const customerName = order.user_id ? "Customer" : "Guest Customer"
-        const firstProduct = order.order_items?.[0]?.products_belong_to?.name || "Product"
+        // Get customer name from profiles map, fallback to "Customer" or "Guest Customer"
+        const customerName = order.user_id 
+          ? (profilesMap[order.user_id] || "Customer")
+          : "Guest Customer"
         
         // Determine status for display
         let displayStatus: "awaiting-shipment" | "shipped" | "delivered" = "awaiting-shipment"
         if (order.status === "delivered") {
           displayStatus = "delivered"
-        } else if (order.status === "shipped") {
-          displayStatus = "shipped"
+        } else if (order.status === "in-transit") {
+          displayStatus = "shipped" // Invoices use 'shipped' for 'in-transit'
         } else {
           displayStatus = "awaiting-shipment"
         }
