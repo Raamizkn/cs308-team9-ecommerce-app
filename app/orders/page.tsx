@@ -5,7 +5,7 @@ import Link from "next/link"
 import { PixelHeader } from "@/components/pixel-header"
 import { Button } from "@/components/ui/button"
 import { getSupabaseBrowserClient } from "@/lib/supabase/client"
-import { Package, User, LogOut, Eye } from "lucide-react"
+import { Package, User, LogOut, Eye, Star } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
 
@@ -375,18 +375,80 @@ export default function OrdersPage() {
                                         >
                                           {submittingItem === item.id ? "Submitting..." : "Request Refund"}
                                         </Button>
+                                        {(() => {
+                                          const productId = item.products_belong_to?.pid || item.product_id
+                                          return productId ? (
+                                            <Link href={`/products/${productId}`}>
+                                              <Button
+                                                size="sm"
+                                                className="bg-[#4ecdc4] hover:bg-[#3dbcb4] text-[#1a1a3e] border-4 border-black"
+                                              >
+                                                <Star className="h-3 w-3 mr-1" />
+                                                Review
+                                              </Button>
+                                            </Link>
+                                          ) : null
+                                        })()}
                                       </div>
                                     ) : pendingQty > 0 ? (
-                                      <p className="text-xs text-[#ff9800] mt-1">
-                                        All items have refund requests pending review
-                                      </p>
-                                    ) : null}
+                                      <div className="flex flex-wrap items-center gap-2">
+                                        <p className="text-xs text-[#ff9800] mt-1">
+                                          All items have refund requests pending review
+                                        </p>
+                                        {(() => {
+                                          const productId = item.products_belong_to?.pid || item.product_id
+                                          return productId ? (
+                                            <Link href={`/products/${productId}`}>
+                                              <Button
+                                                size="sm"
+                                                className="bg-[#4ecdc4] hover:bg-[#3dbcb4] text-[#1a1a3e] border-4 border-black"
+                                              >
+                                                <Star className="h-3 w-3 mr-1" />
+                                                Review
+                                              </Button>
+                                            </Link>
+                                          ) : null
+                                        })()}
+                                      </div>
+                                    ) : (
+                                      // Show review button even when no refund option
+                                      (() => {
+                                        const productId = item.products_belong_to?.pid || item.product_id
+                                        return productId ? (
+                                          <Link href={`/products/${productId}`}>
+                                            <Button
+                                              size="sm"
+                                              className="bg-[#4ecdc4] hover:bg-[#3dbcb4] text-[#1a1a3e] border-4 border-black"
+                                            >
+                                              <Star className="h-3 w-3 mr-1" />
+                                              Review
+                                            </Button>
+                                          </Link>
+                                        ) : null
+                                      })()
+                                    )}
                                   </div>
                                 )
                               })()
-                            ) : (
-                              <p className="text-xs text-[#adb5bd] mt-1">Refund window closed</p>
-                            )}
+                            ) : order.status === "delivered" ? (
+                              // Show review button for delivered orders outside refund window
+                              (() => {
+                                const productId = item.products_belong_to?.pid || item.product_id
+                                return productId ? (
+                                  <div className="mt-2">
+                                    <Link href={`/products/${productId}`}>
+                                      <Button
+                                        size="sm"
+                                        className="bg-[#4ecdc4] hover:bg-[#3dbcb4] text-[#1a1a3e] border-4 border-black"
+                                      >
+                                        <Star className="h-3 w-3 mr-1" />
+                                        Review
+                                      </Button>
+                                    </Link>
+                                  </div>
+                                ) : null
+                              })()
+                            ) : null}
                           </li>
                         ))}
                       </ul>
