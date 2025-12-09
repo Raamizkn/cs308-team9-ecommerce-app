@@ -718,12 +718,14 @@ export default function ProductManagerDashboardPage() {
       const supabase = getSupabaseBrowserClient()
       
       // Map delivery status to order status
-      let orderStatus: string = "pending"
+      // Database allows: 'processing', 'in-transit', 'delivered', 'cancelled'
+      let orderStatus: string = "processing"
       if (status === "delivered") {
         orderStatus = "delivered"
       } else if (status === "in-transit") {
-        orderStatus = "shipped"
+        orderStatus = "in-transit"  // Fixed: was "shipped" which is not a valid status
       } else {
+        // "packing" maps to "processing"
         orderStatus = "processing"
       }
 
