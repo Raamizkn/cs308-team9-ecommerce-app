@@ -1171,38 +1171,40 @@ export default function ProductManagerDashboardPage() {
                           <p className="text-sm font-mono text-[#6c757d]">Invoice #{invoice.invoiceId}</p>
                           <p className="text-lg font-bold text-[#1a1a3e]">Order {invoice.orderId}</p>
                         </div>
-                        <Button
-                          size="sm"
-                          onClick={() => downloadInvoicePDF(invoice.actualOrderId)}
-                          disabled={downloadingInvoiceId === invoice.actualOrderId}
-                          className="bg-[#4ecdc4] hover:bg-[#3dbcb4] text-[#1a1a3e] border-2 border-black font-bold"
-                        >
-                          {downloadingInvoiceId === invoice.actualOrderId ? (
-                            <>
-                              <div className="inline-block w-3 h-3 border-2 border-[#1a1a3e] border-t-transparent rounded-full animate-spin mr-1" />
-                              Generating...
-                            </>
-                          ) : (
-                            <>
-                              <Download className="h-3 w-3 mr-1" />
-                              PDF
-                            </>
-                          )}
-                        </Button>
+                        <div className="flex items-center gap-2">
+                          <span className={`px-3 py-1.5 border-2 border-black text-xs font-bold whitespace-nowrap ${
+                            invoice.status === "delivered" 
+                              ? "bg-[#6bcf7f] text-[#1a1a3e]"
+                              : invoice.status === "shipped"
+                              ? "bg-[#4ecdc4] text-[#1a1a3e]"
+                              : "bg-[#ffb347] text-[#1a1a3e]"
+                          }`}>
+                            {invoice.status.replace("-", " ").toUpperCase()}
+                          </span>
+                          <Button
+                            size="sm"
+                            onClick={() => downloadInvoicePDF(invoice.actualOrderId)}
+                            disabled={downloadingInvoiceId === invoice.actualOrderId}
+                            className="bg-[#4ecdc4] hover:bg-[#3dbcb4] text-[#1a1a3e] border-2 border-black font-bold h-[28px]"
+                          >
+                            {downloadingInvoiceId === invoice.actualOrderId ? (
+                              <>
+                                <div className="inline-block w-3 h-3 border-2 border-[#1a1a3e] border-t-transparent rounded-full animate-spin mr-1" />
+                                Generating...
+                              </>
+                            ) : (
+                              <>
+                                <Download className="h-3 w-3 mr-1" />
+                                PDF
+                              </>
+                            )}
+                          </Button>
+                        </div>
                       </div>
                       <div className="flex flex-wrap gap-4 text-sm mt-2">
                         <span className="font-bold text-[#1a1a3e]">Customer: {invoice.customer}</span>
                         <span className="font-bold text-[#5b3a8f]">Total: ${invoice.total.toFixed(2)}</span>
                         <span className="text-[#6c757d]">Created: {new Date(invoice.createdAt).toLocaleDateString()}</span>
-                        <span className={`px-2 py-1 border-2 border-black text-xs font-bold ${
-                          invoice.status === "delivered" 
-                            ? "bg-[#6bcf7f] text-[#1a1a3e]"
-                            : invoice.status === "shipped"
-                            ? "bg-[#4ecdc4] text-[#1a1a3e]"
-                            : "bg-[#ffb347] text-[#1a1a3e]"
-                        }`}>
-                          {invoice.status.replace("-", " ").toUpperCase()}
-                        </span>
                       </div>
                     </div>
                   ))}
