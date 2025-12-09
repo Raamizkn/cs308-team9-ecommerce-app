@@ -349,7 +349,7 @@ export default function ProductDetailPage() {
                 src={product.image_url || "/placeholder.svg"}
                 alt={product.name}
                 fill
-                className="object-cover"
+                className="object-contain"
               />
               
               {/* Top-left badges */}

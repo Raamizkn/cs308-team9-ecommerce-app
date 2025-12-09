@@ -125,7 +125,7 @@ export default function CartPage() {
                   
                   <div className="flex gap-4">
                     <div className="relative w-24 h-24 bg-[#4ecdc4] border-4 border-black flex-shrink-0">
-                      <Image src={item.image_url || "/placeholder.svg"} alt={item.name} fill className="object-cover" />
+                      <Image src={item.image_url || "/placeholder.svg"} alt={item.name} fill className="object-contain" />
                     </div>
 
                     <div className="flex-1 min-w-0">

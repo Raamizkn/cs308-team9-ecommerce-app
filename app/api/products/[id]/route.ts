@@ -54,6 +54,14 @@ export async function GET(
     // Add discount information to product
     const productWithDiscount = {
       ...data,
+      // Set image_url statically for specific products
+      image_url: data.name === 'Time Turner Necklace' 
+        ? '/time-turner-necklace.png' 
+        : data.name === 'Drago Nova Transforming Bakugan'
+        ? '/drago-nova-bakugan.png'
+        : data.name === 'Elder Wand Replica'
+        ? '/elder-wand-replica.png'
+        : (data.image_url || '/placeholder.svg'),
       discount_rate: highestDiscount?.rate || null,
       discount_campaign_id: highestDiscount?.campaign_id || null,
       discounted_price: highestDiscount 

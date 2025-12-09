@@ -51,7 +51,15 @@ export async function GET(request: NextRequest) {
       ...product,
       id: product.pid,
       stock: product.stock_quantity,
-      wishlist_count: 0
+      wishlist_count: 0,
+      // Set image_url statically for specific products
+      image_url: product.name === 'Time Turner Necklace' 
+        ? '/time-turner-necklace.png' 
+        : product.name === 'Drago Nova Transforming Bakugan'
+        ? '/drago-nova-bakugan.png'
+        : product.name === 'Elder Wand Replica'
+        ? '/elder-wand-replica.png'
+        : (product.image_url || '/placeholder.svg')
     }))
 
     if (sort === "popularity" && products) {

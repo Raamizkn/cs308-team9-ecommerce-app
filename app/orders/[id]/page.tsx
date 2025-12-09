@@ -455,7 +455,7 @@ export default function OrderDetailPage() {
                           src={item.products_belong_to?.image_url || "/placeholder.svg"}
                           alt={item.products_belong_to?.name || "Product"}
                           fill
-                          className="object-cover"
+                          className="object-contain"
                         />
                       </div>
                       <div className="flex-1">
