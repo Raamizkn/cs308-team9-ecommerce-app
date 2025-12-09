@@ -95,14 +95,21 @@ export async function PATCH(
     // Fetch customer name separately
     let customerName = "Anonymous"
     if (updatedReview.customer_id) {
-      const { data: profileData } = await supabase
+      console.log("[Group9] Fetching profile for customer ID:", updatedReview.customer_id)
+      const { data: profileData, error: profileError } = await supabase
         .from("profiles")
         .select("name")
         .eq("uid", updatedReview.customer_id)
         .maybeSingle()
       
-      if (profileData) {
+      if (profileError) {
+        console.error("[Group9] Error fetching profile:", profileError)
+        console.error("[Group9] Profile error details:", JSON.stringify(profileError, null, 2))
+      } else if (profileData) {
         customerName = profileData.name || "Anonymous"
+        console.log("[Group9] Found customer name:", customerName)
+      } else {
+        console.log("[Group9] No profile found for customer ID:", updatedReview.customer_id)
       }
     }
 

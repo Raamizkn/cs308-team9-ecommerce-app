@@ -82,6 +82,8 @@ export async function GET(request: NextRequest) {
     const profilesMap: Record<string, string> = {}
     
     if (customerIds.length > 0) {
+      console.log("[Group9] Fetching profiles for customer IDs:", customerIds)
+      console.log("[Group9] Is product manager:", isProductManager)
       const { data: profilesData, error: profilesError } = await supabase
         .from("profiles")
         .select("uid, name")
@@ -89,10 +91,14 @@ export async function GET(request: NextRequest) {
       
       if (profilesError) {
         console.error("[Group9] Error fetching profiles:", profilesError)
-      } else if (profilesData) {
-        profilesData.forEach((profile: any) => {
-          profilesMap[profile.uid] = profile.name || "Anonymous"
-        })
+        console.error("[Group9] Profile error details:", JSON.stringify(profilesError, null, 2))
+      } else {
+        console.log("[Group9] Fetched profiles:", profilesData?.length || 0, "profiles")
+        if (profilesData) {
+          profilesData.forEach((profile: any) => {
+            profilesMap[profile.uid] = profile.name || "Anonymous"
+          })
+        }
       }
     }
 
