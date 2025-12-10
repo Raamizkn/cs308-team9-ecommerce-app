@@ -42,17 +42,22 @@ export default function CheckoutPage() {
       const {
         data: { user },
       } = await supabase.auth.getUser()
-      
+
       console.log("[Group9] Client-side: User check before order:", user?.id || "NOT LOGGED IN")
 
       // Create order
+      const taxAmount = totalPrice * 0.20
+      const finalTotal = totalPrice + taxAmount
+
       const response = await fetch("/api/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include", // Include cookies so server can read session
         body: JSON.stringify({
           items,
-          total: totalPrice,
+          subtotal: totalPrice,
+          tax_amount: taxAmount,
+          total: finalTotal,
           shipping_address: `${formData.address}, ${formData.city}, ${formData.zipCode}, ${formData.country}`,
           payment_method: "Credit Card",
           customer_email: formData.email,
@@ -72,7 +77,7 @@ export default function CheckoutPage() {
             description: data.details[0],
             variant: "destructive",
           })
-          
+
           // Show additional errors if multiple items have issues
           if (data.details.length > 1) {
             setTimeout(() => {
@@ -135,6 +140,9 @@ export default function CheckoutPage() {
       </div>
     )
   }
+
+  const taxAmount = totalPrice * 0.20
+  const finalTotal = totalPrice + taxAmount
 
   return (
     <div className="min-h-screen bg-[#f8f9fa]">
@@ -306,12 +314,22 @@ export default function CheckoutPage() {
                     <span className="font-bold">${(item.price * item.quantity).toFixed(2)}</span>
                   </div>
                 ))}
+
+                <div className="flex justify-between text-white pt-2 border-t border-white/20">
+                  <span className="font-semibold">Subtotal:</span>
+                  <span className="font-bold">${totalPrice.toFixed(2)}</span>
+                </div>
+
+                <div className="flex justify-between text-white">
+                  <span className="font-semibold">Tax (20%):</span>
+                  <span className="font-bold">${taxAmount.toFixed(2)}</span>
+                </div>
               </div>
 
               <div className="border-t-4 border-white pt-4">
                 <div className="flex justify-between text-white text-xl">
                   <span className="font-bold">Total:</span>
-                  <span className="font-[family-name:var(--font-pixel)]">${totalPrice.toFixed(2)}</span>
+                  <span className="font-[family-name:var(--font-pixel)]">${finalTotal.toFixed(2)}</span>
                 </div>
               </div>
             </div>
