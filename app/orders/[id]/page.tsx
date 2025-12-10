@@ -189,11 +189,11 @@ export default function OrderDetailPage() {
     setDownloadingPdf(true)
     try {
       const supabase = getSupabaseBrowserClient()
-      
+
       // Fetch customer information dynamically
       let customerName = "Customer"
       let customerEmail = "customer@pixelvault.com"
-      
+
       if (order.user_id) {
         try {
           // Fetch user info from API endpoint (server-side can access auth.users)
@@ -220,7 +220,7 @@ export default function OrderDetailPage() {
             }
           }
         }
-        
+
         // If we still don't have a name, try fetching from profiles directly
         if (customerName === "Customer") {
           const { data: profileData } = await supabase
@@ -228,7 +228,7 @@ export default function OrderDetailPage() {
             .select("name")
             .eq("uid", order.user_id)
             .maybeSingle()
-          
+
           if (profileData?.name) {
             customerName = profileData.name
           }
@@ -564,7 +564,15 @@ export default function OrderDetailPage() {
               <div className="space-y-3 mb-6">
                 <div className="flex justify-between text-white">
                   <span className="font-semibold">Subtotal:</span>
-                  <span className="font-bold">${order.total.toFixed(2)}</span>
+                  <span className="font-bold">
+                    ${(order.subtotal ?? (order.total / 1.2)).toFixed(2)}
+                  </span>
+                </div>
+                <div className="flex justify-between text-white">
+                  <span className="font-semibold">Tax (20%):</span>
+                  <span className="font-bold">
+                    ${(order.tax_amount ?? (order.total - (order.total / 1.2))).toFixed(2)}
+                  </span>
                 </div>
                 <div className="flex justify-between text-white">
                   <span className="font-semibold">Shipping:</span>
