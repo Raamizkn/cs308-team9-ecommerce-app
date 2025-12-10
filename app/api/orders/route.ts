@@ -4,7 +4,7 @@ import { getSupabaseServerClient } from "@/lib/supabase/server"
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const { items, total, shipping_address, payment_method, customer_email, customer_name } = body
+    const { items, subtotal, tax_amount, total, shipping_address, payment_method, customer_email, customer_name } = body
 
     if (!items || items.length === 0) {
       return NextResponse.json({ error: "Cart is empty" }, { status: 400 })
@@ -87,6 +87,8 @@ export async function POST(request: Request) {
       .from("orders")
       .insert({
         user_id: userId,
+        subtotal,
+        tax_amount,
         total,
         shipping_address,
         payment_method,
