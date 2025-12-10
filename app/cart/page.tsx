@@ -78,7 +78,9 @@ export default function CartPage() {
   }
 
   const discountAmount = (totalPrice * discount) / 100
-  const finalTotal = totalPrice - discountAmount
+  const subtotalAfterDiscount = totalPrice - discountAmount
+  const taxAmount = subtotalAfterDiscount * 0.20
+  const finalTotal = subtotalAfterDiscount + taxAmount
 
   return (
     <div className="min-h-screen bg-[#f8f9fa]">
@@ -122,7 +124,7 @@ export default function CartPage() {
                       </p>
                     </div>
                   )}
-                  
+
                   <div className="flex gap-4">
                     <div className="relative w-24 h-24 bg-[#4ecdc4] border-4 border-black flex-shrink-0">
                       <Image src={item.image_url || "/placeholder.svg"} alt={item.name} fill className="object-cover" />
@@ -199,6 +201,11 @@ export default function CartPage() {
                     </div>
                   )}
 
+                  <div className="flex justify-between text-white">
+                    <span className="font-semibold">Tax (20%):</span>
+                    <span className="font-bold">${taxAmount.toFixed(2)}</span>
+                  </div>
+
                   <div className="border-t-4 border-white pt-4">
                     <div className="flex justify-between text-white text-xl">
                       <span className="font-bold">Total:</span>
@@ -235,12 +242,12 @@ export default function CartPage() {
                 </div>
 
                 <Link href="/checkout">
-                  <Button 
+                  <Button
                     className="w-full bg-[#ffb347] hover:bg-[#ffd93d] text-black border-4 border-black font-bold text-lg py-6 pixel-shadow-sm disabled:bg-gray-400 disabled:cursor-not-allowed"
                     disabled={Object.keys(stockWarnings).length > 0}
                   >
-                    {Object.keys(stockWarnings).length > 0 
-                      ? "RESOLVE STOCK ISSUES FIRST" 
+                    {Object.keys(stockWarnings).length > 0
+                      ? "RESOLVE STOCK ISSUES FIRST"
                       : "PROCEED TO CHECKOUT"}
                   </Button>
                 </Link>
