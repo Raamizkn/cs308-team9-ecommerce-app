@@ -122,10 +122,36 @@ export async function POST(request: Request) {
 
     console.log("[Group9] Stock validation passed - proceeding with order creation")
 
-    // Create order
-    const { data: order, error: orderError } = await supabase
+    // Create order - try to store customer_name and customer_email from checkout form
+    // These columns may not exist in older databases, so we handle errors gracefully
+    const orderData: any = {
+      user_id: userId,
+      subtotal,
+      tax_amount,
+      total,
+      shipping_address,
+      payment_method,
+      status: "processing",
+    }
+    
+    // Try to add customer info if provided (columns may not exist)
+    if (customer_name) {
+      orderData.customer_name = customer_name
+    }
+    if (customer_email) {
+      orderData.customer_email = customer_email
+    }
+    
+    let { data: order, error: orderError } = await supabase
       .from("orders")
-      .insert({
+      .insert(orderData)
+      .select()
+      .single()
+    
+    // If insert failed due to missing columns, retry without customer_name/email
+    if (orderError && (orderError.message?.includes("column") || orderError.code === "42703")) {
+      console.log("[Group9] customer_name/email columns don't exist, retrying without them")
+      const orderDataWithoutCustomer: any = {
         user_id: userId,
         subtotal,
         tax_amount,
@@ -133,9 +159,15 @@ export async function POST(request: Request) {
         shipping_address,
         payment_method,
         status: "processing",
-      })
-      .select()
-      .single()
+      }
+      const retryResult = await supabase
+        .from("orders")
+        .insert(orderDataWithoutCustomer)
+        .select()
+        .single()
+      order = retryResult.data
+      orderError = retryResult.error
+    }
 
     if (orderError) {
       console.error("[Group9] Error creating order:", orderError)

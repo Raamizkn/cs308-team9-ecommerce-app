@@ -57,15 +57,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Order not found" }, { status: 404 })
     }
 
-    // Get customer information - prioritize checkout form name, then profiles table
-    // The checkout form name is what the user explicitly entered, so it's most reliable
-    let customerName = customer_name || "Customer"
-    let customerEmail = customer_email
+    // Get customer information - prioritize profile details as universal source
+    // Profile is the source of truth for user information
+    let customerName = "Customer"
+    let customerEmail = customer_email || "customer@pixelvault.com"
 
-    // If checkout form didn't provide a name, try to get from profiles table
-    if ((!customerName || customerName === "Customer" || customerName.trim() === "") && order.user_id) {
+    // First, try to get from profiles table (universal source)
+    if (order.user_id) {
       try {
-        // Try to get from profiles table
         const { data: profileData, error: profileError } = await supabase
           .from("profiles")
           .select("name, email")
@@ -78,11 +77,13 @@ export async function POST(request: Request) {
             customerName = profileData.name
           }
           // Use profile email if it exists
-          if (profileData.email) {
+          if (profileData.email && profileData.email.trim() !== "") {
             customerEmail = profileData.email
           }
-        } else {
-          // Fallback: try API endpoint
+        }
+        
+        // Fallback: try API endpoint if profile didn't have name
+        if (customerName === "Customer") {
           try {
             const response = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/users?user_id=${order.user_id}`)
             if (response.ok) {
@@ -90,7 +91,7 @@ export async function POST(request: Request) {
               if (userData.name && userData.name.trim() !== "" && userData.name !== "User") {
                 customerName = userData.name
               }
-              if (userData.email) {
+              if (userData.email && (!customerEmail || customerEmail === "customer@pixelvault.com")) {
                 customerEmail = userData.email
               }
             }
@@ -103,12 +104,15 @@ export async function POST(request: Request) {
       }
     }
     
-    // Ensure we have a valid name - final fallback
+    // Final fallback: use checkout form details if profile doesn't have the info
     if (!customerName || customerName === "Customer" || customerName.trim() === "") {
       customerName = customer_name || "Customer"
     }
+    if (!customerEmail || customerEmail === "customer@pixelvault.com") {
+      customerEmail = customer_email || customerEmail
+    }
     
-    console.log("[Group9] Invoice customer name:", customerName, "from checkout:", customer_name)
+    console.log("[Group9] Invoice customer name:", customerName, "email:", customerEmail)
 
     // Use tax_amount and subtotal from order (already calculated and stored)
     const subtotal = order.subtotal || order.order_items?.reduce((sum: number, item: any) => sum + (item.price * item.quantity), 0) || 0

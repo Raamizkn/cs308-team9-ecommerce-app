@@ -96,6 +96,22 @@ export default function OrderDetailPage() {
         .eq("id", params.id)
         .single()
 
+      // Ensure we have tax_amount, subtotal, and total (for older orders, calculate if missing)
+      if (data) {
+        if (!data.tax_amount && data.subtotal) {
+          // Calculate tax if missing (20% of subtotal)
+          data.tax_amount = data.subtotal * 0.20
+        }
+        if (!data.subtotal && data.order_items) {
+          // Calculate subtotal if missing
+          data.subtotal = data.order_items.reduce((sum: number, item: any) => sum + (item.price * item.quantity), 0)
+        }
+        if (!data.total && data.subtotal && data.tax_amount !== undefined) {
+          // Calculate total if missing
+          data.total = data.subtotal + data.tax_amount
+        }
+      }
+
       setOrder(data)
       if (data) {
         await loadRefundSummaries(supabase, data)
@@ -190,56 +206,81 @@ export default function OrderDetailPage() {
     try {
       const supabase = getSupabaseBrowserClient()
 
-      // Fetch customer information dynamically
+      // Fetch customer information - prioritize profile details as universal source
+      // Profile is the source of truth for user information (matches email invoice logic)
       let customerName = "Customer"
       let customerEmail = "customer@pixelvault.com"
 
+      // First, try to get from profiles table (universal source)
       if (order.user_id) {
         try {
-          // Fetch user info from API endpoint (server-side can access auth.users)
-          const response = await fetch(`/api/users?user_id=${order.user_id}`)
-          if (response.ok) {
-            const userData = await response.json()
-            if (userData.name) {
-              customerName = userData.name
-            }
-            if (userData.email) {
-              customerEmail = userData.email
-            }
-          }
-        } catch (error) {
-          console.error("[Group9] Error fetching user info:", error)
-          // Fallback: try to get from current user if it matches
-          const { data: { user: currentUser } } = await supabase.auth.getUser()
-          if (currentUser && currentUser.id === order.user_id) {
-            customerEmail = currentUser.email || customerEmail
-            if (currentUser.user_metadata?.name) {
-              customerName = currentUser.user_metadata.name
-            } else if (currentUser.email) {
-              customerName = currentUser.email.split("@")[0]
-            }
-          }
-        }
-
-        // If we still don't have a name, try fetching from profiles directly
-        if (customerName === "Customer") {
           const { data: profileData } = await supabase
             .from("profiles")
-            .select("name")
+            .select("name, email")
             .eq("uid", order.user_id)
             .maybeSingle()
 
-          if (profileData?.name) {
-            customerName = profileData.name
+          if (profileData) {
+            // Use profile name if it exists and is not empty/default
+            if (profileData.name && profileData.name.trim() !== "" && profileData.name !== "User") {
+              customerName = profileData.name
+            }
+            // Use profile email if it exists
+            if (profileData.email && profileData.email.trim() !== "") {
+              customerEmail = profileData.email
+            }
           }
+
+          // Fallback: try API endpoint if profile didn't have name
+          if (customerName === "Customer") {
+            try {
+              const response = await fetch(`/api/users?user_id=${order.user_id}`)
+              if (response.ok) {
+                const userData = await response.json()
+                if (userData.name && userData.name.trim() !== "" && userData.name !== "User") {
+                  customerName = userData.name
+                }
+                if (userData.email && (!customerEmail || customerEmail === "customer@pixelvault.com")) {
+                  customerEmail = userData.email
+                }
+              }
+            } catch (error) {
+              console.error("[Group9] Error fetching user info:", error)
+            }
+          }
+
+          // Final fallback: try to get from current user if it matches
+          if (customerName === "Customer") {
+            const { data: { user: currentUser } } = await supabase.auth.getUser()
+            if (currentUser && currentUser.id === order.user_id) {
+              if (!customerEmail || customerEmail === "customer@pixelvault.com") {
+                customerEmail = currentUser.email || customerEmail
+              }
+              if (currentUser.user_metadata?.name) {
+                customerName = currentUser.user_metadata.name
+              } else if (currentUser.email) {
+                customerName = currentUser.email.split("@")[0]
+              }
+            }
+          }
+        } catch (error) {
+          console.error("[Group9] Error fetching customer info:", error)
         }
       }
+      
+      // Final fallback: use checkout form details stored in order if profile doesn't have the info
+      if (!customerName || customerName === "Customer" || customerName.trim() === "") {
+        customerName = order.customer_name || "Customer"
+      }
+      if (!customerEmail || customerEmail === "customer@pixelvault.com") {
+        customerEmail = order.customer_email || customerEmail
+      }
 
-      // Calculate totals
-      const subtotal = order.order_items?.reduce((sum: number, item: any) => sum + (item.price * item.quantity), 0) || 0
+      // Use tax_amount, subtotal, and total from order (already calculated and stored)
+      const subtotal = order.subtotal || order.order_items?.reduce((sum: number, item: any) => sum + (item.price * item.quantity), 0) || 0
       const shipping = 0
-      const tax = 0
-      const total = subtotal
+      const tax = order.tax_amount || 0
+      const total = order.total || subtotal + tax
 
       // Prepare invoice data with dynamic values
       // Handle both products_belong_to and products field names (depending on Supabase relationship setup)
