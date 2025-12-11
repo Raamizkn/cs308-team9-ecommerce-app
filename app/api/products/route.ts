@@ -9,19 +9,19 @@ export async function GET(request: NextRequest) {
     const category = searchParams.get("category")
     const search = searchParams.get("search")
     const sort = searchParams.get("sort") || "created_at"
-    
+
     console.log("[Group9] API called with sort:", sort)
 
     let query = supabase.from("products_belong_to").select("*, categories(name)")
 
     // Filter by category
     if (category) {
-        const { data: allCategories } = await supabase.from("categories").select("cid, name")
-        const categoryData = allCategories?.find(c => c.name.toLowerCase().replace(/ /g, '-') === category)
+      const { data: allCategories } = await supabase.from("categories").select("cid, name")
+      const categoryData = allCategories?.find(c => c.name.toLowerCase().replace(/ /g, '-') === category)
 
-        if (categoryData) {
-            query = query.eq("cid", categoryData.cid)
-        }
+      if (categoryData) {
+        query = query.eq("cid", categoryData.cid)
+      }
     }
 
     // Search filter
@@ -56,13 +56,19 @@ export async function GET(request: NextRequest) {
       stock: product.stock_quantity,
       wishlist_count: 0,
       // Set image_url statically for specific products
-      image_url: product.name === 'Time Turner Necklace' 
-        ? '/time-turner-necklace.png' 
+      image_url: product.name === 'Time Turner Necklace'
+        ? '/time-turner-necklace.png'
         : product.name === 'Drago Nova Transforming Bakugan'
-        ? '/drago-nova-bakugan.png'
-        : product.name === 'Elder Wand Replica'
-        ? '/elder-wand-replica.png'
-        : (product.image_url || '/placeholder.svg')
+          ? '/drago-nova-bakugan.png'
+          : product.name === 'Elder Wand Replica'
+            ? '/elder-wand-replica.png'
+            : product.name === 'Charizard VMAX Battle Deck'
+              ? '/charizard.png'
+              : product.name === 'Pikachu Plush (24 inch)'
+                ? '/pokemon.png'
+                : product.name === 'Skellige Faction Card Set'
+                  ? '/skellige_card_set.png'
+                  : (product.image_url || '/placeholder.svg')
     }))
 
     // Always fetch wishlist counts (needed for popularity sorting)
@@ -73,17 +79,17 @@ export async function GET(request: NextRequest) {
       const wishlistClient = serviceRoleKey
         ? createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, serviceRoleKey)
         : supabase // Fallback to regular client if service role key not available
-      
+
       const { data: wishlistData, error: wishlistError } = await wishlistClient
         .from("wish_for")
         .select("pid")
-      
+
       if (wishlistError) {
         console.error("[Group9] Error fetching wishlist data:", wishlistError)
       }
-      
+
       console.log("[Group9] Raw wishlist data:", wishlistData)
-      
+
       // Count wishlists per product
       wishlistData?.forEach(item => {
         wishlistCounts[item.pid] = (wishlistCounts[item.pid] || 0) + 1
@@ -96,8 +102,8 @@ export async function GET(request: NextRequest) {
         ...p,
         wishlist_count: wishlistCounts[p.pid] || 0
       }))
-      
-      console.log("[Group9] Products after adding wishlist counts:", 
+
+      console.log("[Group9] Products after adding wishlist counts:",
         products.map(p => ({ name: p.name, pid: p.pid, wishlist_count: p.wishlist_count }))
       )
     }
@@ -106,7 +112,7 @@ export async function GET(request: NextRequest) {
     // Fetch discounts for all products
     if (products && products.length > 0) {
       const productIds = products.map(p => p.pid)
-      
+
       // Get discount information
       const { data: discountData } = await supabase
         .from("applies_to")
@@ -124,7 +130,7 @@ export async function GET(request: NextRequest) {
       discountData?.forEach((item: any) => {
         const rate = item.discount_campaigns?.rate || 0
         const did = item.discount_campaigns?.did
-        
+
         // If product has multiple discounts, keep the highest
         if (!discountMap[item.pid] || discountMap[item.pid].rate < rate) {
           discountMap[item.pid] = { rate, campaign_id: did }
@@ -137,7 +143,7 @@ export async function GET(request: NextRequest) {
         wishlist_count: p.wishlist_count || 0, // Explicitly preserve wishlist_count
         discount_rate: discountMap[p.pid]?.rate || null,
         discount_campaign_id: discountMap[p.pid]?.campaign_id || null,
-        discounted_price: discountMap[p.pid] 
+        discounted_price: discountMap[p.pid]
           ? Number((p.price * (1 - discountMap[p.pid].rate)).toFixed(2))
           : null,
         has_discount: !!discountMap[p.pid]
@@ -147,16 +153,16 @@ export async function GET(request: NextRequest) {
     // Fetch ratings from reviews table for all products
     if (products && products.length > 0) {
       const productIds = products.map(p => p.pid)
-      
+
       // Get all reviews with ratings (ratings are always visible, comments need approval)
       const { data: reviewsData } = await supabase
         .from("reviews")
         .select("product_id, rating, status")
         .in("product_id", productIds)
-      
+
       // Calculate average ratings per product
       const ratingMap: Record<number, { avgRating: number; reviewCount: number }> = {}
-      
+
       reviewsData?.forEach((review: any) => {
         const pid = review.product_id
         // Only count reviews that have ratings (rating is not null)
@@ -169,16 +175,16 @@ export async function GET(request: NextRequest) {
           ratingMap[pid].avgRating += review.rating
         }
       })
-      
+
       // Calculate averages and add to products
       Object.keys(ratingMap).forEach(pid => {
         const pidNum = parseInt(pid, 10)
         const data = ratingMap[pidNum]
-        ratingMap[pidNum].avgRating = data.reviewCount > 0 
-          ? data.avgRating / data.reviewCount 
+        ratingMap[pidNum].avgRating = data.reviewCount > 0
+          ? data.avgRating / data.reviewCount
           : 0
       })
-      
+
       // Add rating information to products (preserve wishlist_count)
       products = products.map(p => ({
         ...p,
@@ -200,24 +206,24 @@ export async function GET(request: NextRequest) {
     // Sort by popularity AFTER all data enrichment is complete
     if (sort === "popularity" && products) {
       // Debug logging
-      console.log("[Group9] Sorting by popularity. Wishlist counts:", 
+      console.log("[Group9] Sorting by popularity. Wishlist counts:",
         products.map(p => ({ name: p.name, pid: p.pid, wishlist_count: p.wishlist_count }))
       )
-      
+
       products = products.sort((a, b) => {
         const countA = a.wishlist_count || 0
         const countB = b.wishlist_count || 0
         const result = countB - countA // Descending order (most popular first)
-        
+
         // Debug logging for first few comparisons
         if (Math.abs(countA - countB) > 0) {
           console.log(`[Group9] Comparing ${a.name} (${countA}) vs ${b.name} (${countB}) = ${result}`)
         }
-        
+
         return result
       })
-      
-      console.log("[Group9] After popularity sort:", 
+
+      console.log("[Group9] After popularity sort:",
         products.map(p => ({ name: p.name, wishlist_count: p.wishlist_count }))
       )
     }
@@ -239,7 +245,7 @@ export async function GET(request: NextRequest) {
 
     // Final debug: log first 3 products before returning
     if (sort === "popularity" && products && products.length > 0) {
-      console.log("[Group9] Final products order (first 3):", 
+      console.log("[Group9] Final products order (first 3):",
         products.slice(0, 3).map(p => ({ name: p.name, pid: p.pid, wishlist_count: p.wishlist_count }))
       )
     }
