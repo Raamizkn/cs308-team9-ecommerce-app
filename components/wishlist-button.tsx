@@ -13,15 +13,20 @@ interface WishlistButtonProps {
 
 export function WishlistButton({ productId, className }: WishlistButtonProps) {
   const [isInWishlist, setIsInWishlist] = useState(false)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [hasChecked, setHasChecked] = useState(false) // Track if we've done initial check
   const { toast } = useToast()
   const router = useRouter()
   const pathname = usePathname()
 
-  const checkWishlistStatus = useCallback(async () => {
+  const checkWishlistStatus = useCallback(async (silent = false) => {
     try {
-      setLoading(true)
+      // Only show loading state on first check, not on re-checks
+      if (!hasChecked && !silent) {
+        setLoading(true)
+      }
+      
       const supabase = getSupabaseBrowserClient()
       const {
         data: { user },
@@ -29,10 +34,10 @@ export function WishlistButton({ productId, className }: WishlistButtonProps) {
       } = await supabase.auth.getUser()
 
       if (userError) {
-        console.error("[Group9] Error getting user:", userError)
         setIsAuthenticated(false)
         setIsInWishlist(false)
         setLoading(false)
+        setHasChecked(true)
         return
       }
 
@@ -40,6 +45,7 @@ export function WishlistButton({ productId, className }: WishlistButtonProps) {
         setIsAuthenticated(false)
         setIsInWishlist(false)
         setLoading(false)
+        setHasChecked(true)
         return
       }
 
@@ -47,9 +53,9 @@ export function WishlistButton({ productId, className }: WishlistButtonProps) {
 
       const pidValue = typeof productId === "string" ? parseInt(productId, 10) : productId
       if (isNaN(pidValue)) {
-        console.warn("[Group9] Invalid productId for wishlist check:", productId)
         setIsInWishlist(false)
         setLoading(false)
+        setHasChecked(true)
         return
       }
 
@@ -61,48 +67,43 @@ export function WishlistButton({ productId, className }: WishlistButtonProps) {
         .maybeSingle()
 
       if (error) {
-        console.error("[Group9] Error checking wishlist for product", pidValue, ":", error)
         setIsInWishlist(false)
       } else {
-        const inWishlist = !!data
-        console.log("[Group9] Wishlist check for product", pidValue, ":", inWishlist ? "IN WISHLIST" : "NOT IN WISHLIST")
-        setIsInWishlist(inWishlist)
+        setIsInWishlist(!!data)
       }
     } catch (error) {
-      console.error("[Group9] Error checking wishlist:", error)
       setIsInWishlist(false)
     } finally {
       setLoading(false)
+      setHasChecked(true)
     }
-  }, [productId])
+  }, [productId, hasChecked])
 
   useEffect(() => {
-    // Initial check on mount
+    // Initial check on mount - no delay
     checkWishlistStatus()
   }, [checkWishlistStatus])
 
-  // Re-check wishlist status when navigating back to home/catalog pages
+  // Re-check wishlist status when navigating back to home/catalog pages - silent check
   useEffect(() => {
-    if (pathname === "/" || pathname === "/catalog") {
-      // Delay to ensure navigation and auth are complete
-      const timer = setTimeout(() => {
-        checkWishlistStatus()
-      }, 500)
-      return () => clearTimeout(timer)
+    if ((pathname === "/" || pathname === "/catalog") && hasChecked) {
+      // Silent check - don't show loading, preserve current state
+      checkWishlistStatus(true)
     }
-  }, [pathname, checkWishlistStatus])
+  }, [pathname, checkWishlistStatus, hasChecked])
 
-  // Also check when window regains focus (user switches back to tab)
+  // Also check when window regains focus (user switches back to tab) - silent check
   useEffect(() => {
+    if (!hasChecked) return // Don't check on focus if we haven't done initial check
+    
     const handleFocus = () => {
-      setTimeout(() => {
-        checkWishlistStatus()
-      }, 100)
+      // Silent check - don't show loading, preserve current state
+      checkWishlistStatus(true)
     }
 
     window.addEventListener("focus", handleFocus)
     return () => window.removeEventListener("focus", handleFocus)
-  }, [checkWishlistStatus])
+  }, [checkWishlistStatus, hasChecked])
 
   const handleToggleWishlist = async () => {
     try {
@@ -146,10 +147,8 @@ export function WishlistButton({ productId, className }: WishlistButtonProps) {
           title: "Removed from wishlist",
           description: "Item removed from your wishlist",
         })
-        // Refresh status after a short delay to ensure DB update is complete
-        setTimeout(() => {
-          checkWishlistStatus()
-        }, 200)
+        // Refresh status immediately - state already updated
+        checkWishlistStatus()
       } else {
         // Ensure user exists in customers table (required by foreign key)
         const { data: existingCustomer } = await supabase
@@ -223,10 +222,8 @@ export function WishlistButton({ productId, className }: WishlistButtonProps) {
           title: "Added to wishlist",
           description: "Item added to your wishlist",
         })
-        // Refresh status after a short delay to ensure DB update is complete
-        setTimeout(() => {
-          checkWishlistStatus()
-        }, 200)
+        // Refresh status immediately - state already updated
+        checkWishlistStatus()
       }
     } catch (error: any) {
       console.error("[Group9] Error toggling wishlist:", error)
@@ -248,7 +245,7 @@ export function WishlistButton({ productId, className }: WishlistButtonProps) {
     >
       <Heart
         className={`h-5 w-5 ${
-          loading
+          loading && !hasChecked
             ? "text-[#6c757d] fill-none"
             : isInWishlist
             ? "fill-[#dc3545] text-[#dc3545]"
