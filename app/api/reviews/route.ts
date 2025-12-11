@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getSupabaseServerClient } from "@/lib/supabase/server"
+import { createClient } from "@supabase/supabase-js"
 
 // GET - Fetch reviews (for product managers: all reviews, for customers: approved reviews only, for guests: approved reviews only)
 export async function GET(request: NextRequest) {
@@ -80,15 +81,21 @@ export async function GET(request: NextRequest) {
     // Fetch customer names separately
     const customerIds = [...new Set((reviews || []).map((r: any) => r.customer_id).filter(Boolean))]
     const profilesMap: Record<string, string> = {}
-    
+
     if (customerIds.length > 0) {
       console.log("[Group9] Fetching profiles for customer IDs:", customerIds)
-      console.log("[Group9] Is product manager:", isProductManager)
-      const { data: profilesData, error: profilesError } = await supabase
+
+      // Use service role key to bypass RLS for fetching names
+      const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+      const profileClient = serviceRoleKey
+        ? createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, serviceRoleKey)
+        : supabase // Fallback to regular client (will fail if RLS blocks)
+
+      const { data: profilesData, error: profilesError } = await profileClient
         .from("profiles")
         .select("uid, name")
         .in("uid", customerIds)
-      
+
       if (profilesError) {
         console.error("[Group9] Error fetching profiles:", profilesError)
         console.error("[Group9] Profile error details:", JSON.stringify(profilesError, null, 2))
@@ -106,7 +113,7 @@ export async function GET(request: NextRequest) {
     const transformedReviews = reviews?.map((review: any) => {
       const customerName = profilesMap[review.customer_id] || "Anonymous"
       const isApproved = review.status === "approved"
-      
+
       // For non-product managers: ratings are always visible, but comments only if approved
       // For product managers: show everything
       return {
@@ -231,7 +238,7 @@ export async function POST(request: NextRequest) {
     // Check separately for existing rating row and comment row
     // Rating row: rating IS NOT NULL, comment IS NULL
     // Comment row: comment IS NOT NULL, rating IS NULL
-    
+
     const { data: existingReviews, error: existingError } = await supabase
       .from("reviews")
       .select("review_id, rating, comment")
@@ -250,7 +257,7 @@ export async function POST(request: NextRequest) {
     const existingRatingRow = existingReviews?.find(
       (r: any) => r.rating !== null && r.comment === null
     )
-    
+
     // Find existing comment row (comment IS NOT NULL, rating IS NULL)
     const existingCommentRow = existingReviews?.find(
       (r: any) => r.comment !== null && r.rating === null
@@ -392,7 +399,7 @@ export async function POST(request: NextRequest) {
         // Update existing comment row
         const { data: updatedReview, error: updateError } = await supabase
           .from("reviews")
-          .update({ 
+          .update({
             comment: commentText,
             status: "pending" // Comments always need approval
           })
