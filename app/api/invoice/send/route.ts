@@ -33,6 +33,7 @@ export async function POST(request: Request) {
     const { order_id, customer_email, customer_name } = body
 
     console.log("[Group9] /api/invoice/send invoked for order:", order_id)
+    console.log("[Group9] Received customer_name from request:", customer_name)
 
     if (!order_id) {
       return NextResponse.json({ error: "order_id is required" }, { status: 400 })
@@ -56,33 +57,64 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Order not found" }, { status: 404 })
     }
 
-    // Get customer information
+    // Get customer information - prioritize checkout form name, then profiles table
+    // The checkout form name is what the user explicitly entered, so it's most reliable
     let customerName = customer_name || "Customer"
     let customerEmail = customer_email
 
-    // If user_id exists, try to get more details
-    if (order.user_id) {
+    // If checkout form didn't provide a name, try to get from profiles table
+    if ((!customerName || customerName === "Customer" || customerName.trim() === "") && order.user_id) {
       try {
-        const response = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/users?user_id=${order.user_id}`)
-        if (response.ok) {
-          const userData = await response.json()
-          if (userData.name) {
-            customerName = userData.name
+        // Try to get from profiles table
+        const { data: profileData, error: profileError } = await supabase
+          .from("profiles")
+          .select("name, email")
+          .eq("uid", order.user_id)
+          .maybeSingle()
+
+        if (!profileError && profileData) {
+          // Use profile name if it exists and is not empty/default
+          if (profileData.name && profileData.name.trim() !== "" && profileData.name !== "User") {
+            customerName = profileData.name
           }
-          if (userData.email) {
-            customerEmail = userData.email
+          // Use profile email if it exists
+          if (profileData.email) {
+            customerEmail = profileData.email
+          }
+        } else {
+          // Fallback: try API endpoint
+          try {
+            const response = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/users?user_id=${order.user_id}`)
+            if (response.ok) {
+              const userData = await response.json()
+              if (userData.name && userData.name.trim() !== "" && userData.name !== "User") {
+                customerName = userData.name
+              }
+              if (userData.email) {
+                customerEmail = userData.email
+              }
+            }
+          } catch (error) {
+            console.error("[Group9] Error fetching user info:", error)
           }
         }
       } catch (error) {
-        console.error("[Group9] Error fetching user info:", error)
+        console.error("[Group9] Error fetching profile:", error)
       }
     }
+    
+    // Ensure we have a valid name - final fallback
+    if (!customerName || customerName === "Customer" || customerName.trim() === "") {
+      customerName = customer_name || "Customer"
+    }
+    
+    console.log("[Group9] Invoice customer name:", customerName, "from checkout:", customer_name)
 
-    // Calculate totals
-    const subtotal = order.order_items?.reduce((sum: number, item: any) => sum + (item.price * item.quantity), 0) || 0
+    // Use tax_amount and subtotal from order (already calculated and stored)
+    const subtotal = order.subtotal || order.order_items?.reduce((sum: number, item: any) => sum + (item.price * item.quantity), 0) || 0
     const shipping = 0
-    const tax = 0
-    const total = subtotal
+    const tax = order.tax_amount || 0
+    const total = order.total || subtotal + tax
 
     // Prepare invoice data
     const invoiceData: InvoiceData = {
