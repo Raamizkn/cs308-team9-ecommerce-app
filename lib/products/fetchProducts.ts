@@ -13,6 +13,7 @@ export interface Product {
   discount_rate?: number | null
   discounted_price?: number | null
   has_discount?: boolean
+  wishlist_count?: number
 }
 
 export interface FetchProductsParams {
@@ -41,6 +42,15 @@ export async function fetchProducts(params?: FetchProductsParams): Promise<Produ
 
     const data = await response.json()
 
+    // Debug logging for popularity sorting
+    if (params?.sort === "popularity") {
+      console.log("[Client] Sort parameter:", params?.sort)
+      console.log("[Client] Received products with wishlist counts:", 
+        (data.products || []).map((p: any) => ({ name: p.name, pid: p.pid, wishlist_count: p.wishlist_count }))
+      )
+      console.log("[Client] First product:", data.products?.[0] ? { name: data.products[0].name, wishlist_count: data.products[0].wishlist_count } : "none")
+    }
+
     // Transform products to match component expectations
     const transformedProducts = (data.products || []).map((product: any) => ({
       ...product,
@@ -53,7 +63,15 @@ export async function fetchProducts(params?: FetchProductsParams): Promise<Produ
       discount_rate: product.discount_rate || null,
       discounted_price: product.discounted_price || null,
       has_discount: product.has_discount || false,
+      wishlist_count: product.wishlist_count || 0, // Preserve wishlist_count for sorting
     }))
+
+    // Debug: log transformed products order
+    if (params?.sort === "popularity") {
+      console.log("[Client] Transformed products order (first 3):", 
+        transformedProducts.slice(0, 3).map((p: any) => ({ name: p.name, wishlist_count: p.wishlist_count }))
+      )
+    }
 
     return transformedProducts
   } catch (error) {

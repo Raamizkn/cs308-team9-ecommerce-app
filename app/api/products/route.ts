@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getSupabaseServerClient } from "@/lib/supabase/server"
+import { createClient } from "@supabase/supabase-js"
 
 export async function GET(request: NextRequest) {
   try {
@@ -8,6 +9,8 @@ export async function GET(request: NextRequest) {
     const category = searchParams.get("category")
     const search = searchParams.get("search")
     const sort = searchParams.get("sort") || "created_at"
+    
+    console.log("[Group9] API called with sort:", sort)
 
     let query = supabase.from("products_belong_to").select("*, categories(name)")
 
@@ -46,7 +49,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    // If sorting by popularity, get wishlist counts
+    // Map products with initial data
     let products = data?.map(product => ({
       ...product,
       id: product.pid,
@@ -62,23 +65,41 @@ export async function GET(request: NextRequest) {
         : (product.image_url || '/placeholder.svg')
     }))
 
-    if (sort === "popularity" && products) {
-      // Get wishlist counts for all products
-      const { data: wishlistData } = await supabase
+    // Always fetch wishlist counts (needed for popularity sorting)
+    // Use service role key to bypass RLS since wishlist counts are public data
+    let wishlistCounts: Record<number, number> = {}
+    if (products && products.length > 0) {
+      const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+      const wishlistClient = serviceRoleKey
+        ? createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, serviceRoleKey)
+        : supabase // Fallback to regular client if service role key not available
+      
+      const { data: wishlistData, error: wishlistError } = await wishlistClient
         .from("wish_for")
         .select("pid")
       
+      if (wishlistError) {
+        console.error("[Group9] Error fetching wishlist data:", wishlistError)
+      }
+      
+      console.log("[Group9] Raw wishlist data:", wishlistData)
+      
       // Count wishlists per product
-      const wishlistCounts: Record<number, number> = {}
       wishlistData?.forEach(item => {
         wishlistCounts[item.pid] = (wishlistCounts[item.pid] || 0) + 1
       })
 
-      // Add counts and sort
+      console.log("[Group9] Wishlist counts map:", wishlistCounts)
+
+      // Add wishlist counts to all products
       products = products.map(p => ({
         ...p,
         wishlist_count: wishlistCounts[p.pid] || 0
-      })).sort((a, b) => b.wishlist_count - a.wishlist_count)
+      }))
+      
+      console.log("[Group9] Products after adding wishlist counts:", 
+        products.map(p => ({ name: p.name, pid: p.pid, wishlist_count: p.wishlist_count }))
+      )
     }
 
 
@@ -110,9 +131,10 @@ export async function GET(request: NextRequest) {
         }
       })
 
-      // Add discount information to products
+      // Add discount information to products (preserve wishlist_count)
       products = products.map(p => ({
         ...p,
+        wishlist_count: p.wishlist_count || 0, // Explicitly preserve wishlist_count
         discount_rate: discountMap[p.pid]?.rate || null,
         discount_campaign_id: discountMap[p.pid]?.campaign_id || null,
         discounted_price: discountMap[p.pid] 
@@ -157,9 +179,10 @@ export async function GET(request: NextRequest) {
           : 0
       })
       
-      // Add rating information to products
+      // Add rating information to products (preserve wishlist_count)
       products = products.map(p => ({
         ...p,
+        wishlist_count: p.wishlist_count || 0, // Explicitly preserve wishlist_count
         rating: ratingMap[p.pid]?.avgRating || 0,
         review_count: ratingMap[p.pid]?.reviewCount || 0
       }))
@@ -172,6 +195,53 @@ export async function GET(request: NextRequest) {
         const priceB = b.has_discount && b.discounted_price ? b.discounted_price : b.price
         return sort === "price_asc" ? priceA - priceB : priceB - priceA
       })
+    }
+
+    // Sort by popularity AFTER all data enrichment is complete
+    if (sort === "popularity" && products) {
+      // Debug logging
+      console.log("[Group9] Sorting by popularity. Wishlist counts:", 
+        products.map(p => ({ name: p.name, pid: p.pid, wishlist_count: p.wishlist_count }))
+      )
+      
+      products = products.sort((a, b) => {
+        const countA = a.wishlist_count || 0
+        const countB = b.wishlist_count || 0
+        const result = countB - countA // Descending order (most popular first)
+        
+        // Debug logging for first few comparisons
+        if (Math.abs(countA - countB) > 0) {
+          console.log(`[Group9] Comparing ${a.name} (${countA}) vs ${b.name} (${countB}) = ${result}`)
+        }
+        
+        return result
+      })
+      
+      console.log("[Group9] After popularity sort:", 
+        products.map(p => ({ name: p.name, wishlist_count: p.wishlist_count }))
+      )
+    }
+
+    // Sort by rating AFTER all data enrichment is complete
+    if (sort === "rating" && products) {
+      products = products.sort((a, b) => {
+        const ratingA = a.rating || 0
+        const ratingB = b.rating || 0
+        // If ratings are equal, sort by number of reviews (more reviews = more reliable)
+        if (ratingA === ratingB) {
+          const reviewCountA = a.review_count || 0
+          const reviewCountB = b.review_count || 0
+          return reviewCountB - reviewCountA
+        }
+        return ratingB - ratingA // Descending order (highest rated first)
+      })
+    }
+
+    // Final debug: log first 3 products before returning
+    if (sort === "popularity" && products && products.length > 0) {
+      console.log("[Group9] Final products order (first 3):", 
+        products.slice(0, 3).map(p => ({ name: p.name, pid: p.pid, wishlist_count: p.wishlist_count }))
+      )
     }
 
     return NextResponse.json({ products })

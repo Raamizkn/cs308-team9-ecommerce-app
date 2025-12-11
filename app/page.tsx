@@ -93,6 +93,8 @@ export default function HomePage() {
         return "PRICE: LOW TO HIGH"
       case "price_desc":
         return "PRICE: HIGH TO LOW"
+      case "popularity":
+        return "MOST POPULAR"
       case "rating":
         return "HIGHEST RATED"
       default:
@@ -151,6 +153,9 @@ export default function HomePage() {
                 </SelectItem>
                 <SelectItem value="price_desc" className="font-bold cursor-pointer hover:bg-[#ffb347] focus:bg-[#ffb347]">
                   PRICE: HIGH TO LOW
+                </SelectItem>
+                <SelectItem value="popularity" className="font-bold cursor-pointer hover:bg-[#ffb347] focus:bg-[#ffb347]">
+                  MOST POPULAR
                 </SelectItem>
                 <SelectItem value="rating" className="font-bold cursor-pointer hover:bg-[#ffb347] focus:bg-[#ffb347]">
                   HIGHEST RATED
