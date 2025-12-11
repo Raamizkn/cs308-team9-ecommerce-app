@@ -17,6 +17,8 @@ interface ProductCardProps {
   discount_rate?: number | null
   discounted_price?: number | null
   has_discount?: boolean
+  preloadedWishlistIds?: number[]
+  onWishlistMutate?: () => void
 }
 
 export function ProductCard({
@@ -32,6 +34,8 @@ export function ProductCard({
   discount_rate,
   discounted_price,
   has_discount,
+  preloadedWishlistIds,
+  onWishlistMutate,
 }: ProductCardProps) {
   const displayPrice = has_discount && discounted_price ? discounted_price : price
   const discountPercentage = discount_rate ? Math.round(discount_rate * 100) : 0
@@ -69,7 +73,7 @@ export function ProductCard({
         )}
         {/* Wishlist button overlay on image - clickable and doesn't navigate */}
         <div className="absolute top-2 right-2 z-20" onClick={(e) => e.preventDefault()}>
-          <WishlistButton productId={id} />
+          <WishlistButton productId={id} preloadedWishlistIds={preloadedWishlistIds} onMutate={onWishlistMutate} />
         </div>
       </div>
 

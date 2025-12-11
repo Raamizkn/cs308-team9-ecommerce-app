@@ -1,46 +1,59 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useMemo } from "react"
 import Link from "next/link"
 import { PixelHeader } from "@/components/pixel-header"
 import { Button } from "@/components/ui/button"
 import { getSupabaseBrowserClient } from "@/lib/supabase/client"
+import { useOrders, useRefundSummaries } from "@/hooks/useOrders"
 import { Package, User, LogOut, Eye, Star } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
-
-type RefundSummary = { approved: number; pending: number; rejected: number }
+import { type RefundSummary } from "@/lib/orders/fetchOrders"
 
 export default function OrdersPage() {
   const router = useRouter()
   const { toast } = useToast()
+  const [userId, setUserId] = useState<string | null>(null)
   const [user, setUser] = useState<any>(null)
-  const [orders, setOrders] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
-  const [refundSummaryByItem, setRefundSummaryByItem] = useState<Record<string, RefundSummary>>({})
   const [selectedQty, setSelectedQty] = useState<Record<string, number>>({})
   const [submittingItem, setSubmittingItem] = useState<string | null>(null)
 
+  // Fetch user auth info
   useEffect(() => {
-    fetchUserData()
-    fetchOrders()
+    checkAuth()
   }, [])
 
-  const fetchUserData = async () => {
+  const checkAuth = async () => {
     try {
       const supabase = getSupabaseBrowserClient()
       const {
-        data: { user },
+        data: { user: authUser },
       } = await supabase.auth.getUser()
 
-      if (user) {
-        const { data } = await supabase.from("users").select("*").eq("id", user.id).single()
-        setUser(data || { email: user.email, name: user.user_metadata?.name })
+      if (authUser) {
+        setUserId(authUser.id)
+        const { data } = await supabase.from("users").select("*").eq("id", authUser.id).single()
+        setUser(data || { email: authUser.email, name: authUser.user_metadata?.name })
       }
     } catch (error) {
-      console.error("[Group9] Error fetching user:", error)
+      console.error("[Group9] Error checking auth:", error)
     }
   }
+
+  // Use SWR hooks for orders and refund summaries
+  const { orders, isLoading: ordersLoading, mutate: mutateOrders } = useOrders(userId)
+
+  // Get all item IDs from orders
+  const itemIds = useMemo(
+    () => orders.flatMap((order: any) => order.order_items?.map((item: any) => item.id) ?? []),
+    [orders]
+  )
+
+  // Fetch refund summaries
+  const { summaries: refundSummaryByItem } = useRefundSummaries(itemIds.length > 0 ? itemIds : null)
+
+  const loading = !userId || ordersLoading
 
   const isWithinRefundWindow = (createdAt: string) => {
     const purchaseDate = new Date(createdAt)
@@ -56,93 +69,12 @@ export default function OrdersPage() {
     return remaining > 0 ? remaining : 0
   }
 
-  const loadRefundSummaries = async (supabaseClient: any, ordersData: any[]) => {
-    const itemIds = ordersData.flatMap((order: any) => order.order_items?.map((item: any) => item.id) ?? [])
-
-    if (itemIds.length === 0) {
-      setRefundSummaryByItem({})
-      return
-    }
-
-    const { data: refunds, error } = await supabaseClient
-      .from("refund_requests")
-      .select("order_item_id, quantity, status")
-      .in("order_item_id", itemIds)
-
-    if (error) {
-      console.error("[Group9] Error fetching refunds:", error)
-      setRefundSummaryByItem({})
-      return
-    }
-
-    const summaries: Record<string, RefundSummary> = {}
-    refunds?.forEach((row: { order_item_id: string; quantity: number; status: string }) => {
-      const current = summaries[row.order_item_id] ?? { approved: 0, pending: 0, rejected: 0 }
-      if (row.status === "approved") {
-        current.approved += row.quantity
-      } else if (row.status === "pending") {
-        current.pending += row.quantity
-      } else if (row.status === "rejected") {
-        current.rejected += row.quantity
-      }
-      summaries[row.order_item_id] = current
-    })
-    setRefundSummaryByItem(summaries)
-  }
-
-  const fetchOrders = async () => {
-    try {
-      const supabase = getSupabaseBrowserClient()
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-
-      if (user) {
-        let fetchedOrders: any[] = []
-        // First try with join, if it fails, try without
-        // First try with join, if it fails, try without
-        const { data, error } = await supabase
-          .from("orders")
-          .select("*, order_items(*, products_belong_to(*))")
-          .eq("user_id", user.id)
-          .order("created_at", { ascending: false })
-
-        if (error) {
-          console.error("[Group9] Error with join, trying without:", error)
-          // Fallback: get orders without product details
-          const { data: ordersOnly } = await supabase
-            .from("orders")
-            .select("*")
-            .eq("user_id", user.id)
-            .order("created_at", { ascending: false })
-
-          fetchedOrders = ordersOnly || []
-        } else {
-          fetchedOrders = data || []
-        }
-
-        setOrders(fetchedOrders)
-        await loadRefundSummaries(supabase, fetchedOrders)
-      } else {
-        setOrders([])
-        setRefundSummaryByItem({})
-      }
-    } catch (error) {
-      console.error("[Group9] Error fetching orders:", error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
   const handleRequestRefund = async (orderId: string, itemId: string) => {
     try {
       setSubmittingItem(itemId)
       const supabase = getSupabaseBrowserClient()
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
 
-      if (!user) {
+      if (!userId) {
         toast({
           title: "Please log in",
           description: "You must be signed in to request a refund.",
@@ -153,7 +85,7 @@ export default function OrdersPage() {
 
       const qty = selectedQty[itemId] ?? 1
       const { error } = await supabase.rpc("create_refund_request", {
-        p_user_id: user.id,
+        p_user_id: userId,
         p_order_item_id: itemId,
         p_quantity: qty,
       })
@@ -172,7 +104,8 @@ export default function OrdersPage() {
         description: "We'll review your request shortly.",
       })
 
-      await fetchOrders()
+      // Revalidate orders and refund summaries
+      mutateOrders()
     } catch (error) {
       console.error("[Group9] Refund request error:", error)
       toast({

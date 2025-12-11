@@ -10,6 +10,7 @@ import { getSupabaseBrowserClient } from "@/lib/supabase/client"
 import { useToast } from "@/hooks/use-toast"
 import { Heart, Package, LogOut, User } from "lucide-react"
 import Link from "next/link"
+import { mutate as globalMutate } from "swr"
 
 export default function ProfilePage() {
   const router = useRouter()
@@ -189,14 +190,41 @@ export default function ProfilePage() {
       } = await supabase.auth.getUser()
 
       if (user) {
-        await supabase.from("wish_for").delete().eq("uid", user.id).eq("pid", parseInt(productId) || productId)
+        const pidValue = parseInt(productId) || productId
 
+        // Delete from database
+        await supabase.from("wish_for").delete().eq("uid", user.id).eq("pid", pidValue)
+
+        // Update local state
         setWishlist(wishlist.filter((item) => (item.pid?.toString() || item.product_id) !== productId))
 
         toast({
           title: "Removed from wishlist",
           description: "Item removed from your wishlist",
         })
+
+        // Update the SWR cache for the full wishlist - remove the product from cached array
+        const cacheKey = ["wishlist", user.id]
+        globalMutate(
+          cacheKey,
+          (cachedWishlistIds: number[] | undefined) => {
+            if (!cachedWishlistIds) return cachedWishlistIds
+            // Remove the product ID from the cached wishlist array
+            return cachedWishlistIds.filter((id: number) => id !== pidValue)
+          },
+          false // Don't revalidate, use the updated data immediately
+        )
+
+        // Also invalidate individual product status caches
+        globalMutate(
+          (key) => {
+            if (!Array.isArray(key)) return false
+            // Clear individual product wishlist status caches for this user
+            return key[0] === "wishlist-status" && key[1] === user.id && key[2] === pidValue
+          },
+          undefined,
+          { revalidate: false }
+        )
       }
     } catch (error) {
       console.error("[Group9] Error removing from wishlist:", error)

@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { ArrowLeft, Star, Package, MessageSquare, ThumbsUp, Percent } from "lucide-react"
 import { useCart } from "@/lib/cart-context"
 import { useToast } from "@/hooks/use-toast"
+import { useWishlist } from "@/hooks/useWishlist"
 import { WishlistButton } from "@/components/wishlist-button"
 import { getSupabaseBrowserClient } from "@/lib/supabase/client"
 import { Textarea } from "@/components/ui/textarea"
@@ -73,12 +74,30 @@ export default function ProductDetailPage() {
   const [selectedRating, setSelectedRating] = useState(0)
   const [reviewComment, setReviewComment] = useState("")
   const [submittingReview, setSubmittingReview] = useState(false)
+  const [userId, setUserId] = useState<string | null>(null)
+
+  // Get wishlist mutate function for cache updates
+  const { mutate: mutateWishlist } = useWishlist(userId)
 
   useEffect(() => {
     fetchProduct()
     fetchReviews()
     checkReviewEligibility()
+    checkUserAuth()
   }, [params.id])
+
+  const checkUserAuth = async () => {
+    try {
+      const supabase = getSupabaseBrowserClient()
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      setUserId(user?.id || null)
+    } catch (error) {
+      console.error("[Group9] Error checking auth:", error)
+      setUserId(null)
+    }
+  }
 
   const fetchProduct = async () => {
     try {
@@ -514,7 +533,7 @@ export default function ProductDetailPage() {
 
               {/* Wishlist and Add to Cart Buttons */}
               <div className="flex items-center gap-3">
-                <WishlistButton productId={product.pid.toString()} className="flex-shrink-0" />
+                <WishlistButton productId={product.pid.toString()} className="flex-shrink-0" onMutate={mutateWishlist} />
                 <Button
                   onClick={handleAddToCart}
                   disabled={isOutOfStock}
