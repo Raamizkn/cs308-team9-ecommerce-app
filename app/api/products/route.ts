@@ -122,6 +122,58 @@ export async function GET(request: NextRequest) {
       }))
     }
 
+    // Fetch ratings from reviews table for all products
+    if (products && products.length > 0) {
+      const productIds = products.map(p => p.pid)
+      
+      // Get all reviews with ratings (ratings are always visible, comments need approval)
+      const { data: reviewsData } = await supabase
+        .from("reviews")
+        .select("product_id, rating, status")
+        .in("product_id", productIds)
+      
+      // Calculate average ratings per product
+      const ratingMap: Record<number, { avgRating: number; reviewCount: number }> = {}
+      
+      reviewsData?.forEach((review: any) => {
+        const pid = review.product_id
+        // Only count reviews that have ratings (rating is not null)
+        if (review.rating && review.rating > 0) {
+          if (!ratingMap[pid]) {
+            ratingMap[pid] = { avgRating: 0, reviewCount: 0 }
+          }
+          // Count all reviews with ratings (ratings are always visible)
+          ratingMap[pid].reviewCount++
+          ratingMap[pid].avgRating += review.rating
+        }
+      })
+      
+      // Calculate averages and add to products
+      Object.keys(ratingMap).forEach(pid => {
+        const pidNum = parseInt(pid, 10)
+        const data = ratingMap[pidNum]
+        ratingMap[pidNum].avgRating = data.reviewCount > 0 
+          ? data.avgRating / data.reviewCount 
+          : 0
+      })
+      
+      // Add rating information to products
+      products = products.map(p => ({
+        ...p,
+        rating: ratingMap[p.pid]?.avgRating || 0,
+        review_count: ratingMap[p.pid]?.reviewCount || 0
+      }))
+    }
+
+    // Sort by discounted price if price sorting is requested
+    if ((sort === "price_asc" || sort === "price_desc") && products) {
+      products = products.sort((a, b) => {
+        const priceA = a.has_discount && a.discounted_price ? a.discounted_price : a.price
+        const priceB = b.has_discount && b.discounted_price ? b.discounted_price : b.price
+        return sort === "price_asc" ? priceA - priceB : priceB - priceA
+      })
+    }
+
     return NextResponse.json({ products })
   } catch (error) {
     console.error("[Group9] Unexpected error:", error)

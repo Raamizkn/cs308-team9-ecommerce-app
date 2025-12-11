@@ -24,6 +24,46 @@ export async function POST(request: Request) {
       console.error("[Group9] Error getting user:", userError)
     }
 
+    // If user is authenticated, check if they have address and tax_id registered
+    if (userId) {
+      const { data: customerData, error: customerError } = await supabase
+        .from("customers")
+        .select("home_address, tax_id")
+        .eq("uid", userId)
+        .maybeSingle()
+
+      if (customerError) {
+        console.error("[Group9] Error checking customer data:", customerError)
+      }
+
+      if (customerData) {
+        const missingFields: string[] = []
+        if (!customerData.home_address || customerData.home_address.trim() === "" || customerData.home_address === "Not provided") {
+          missingFields.push("address")
+        }
+        if (!customerData.tax_id || customerData.tax_id.trim() === "") {
+          missingFields.push("Tax ID")
+        }
+
+        if (missingFields.length > 0) {
+          return NextResponse.json(
+            { 
+              error: `Please register your ${missingFields.join(" and ")} from the profile page before placing an order.` 
+            },
+            { status: 400 }
+          )
+        }
+      } else {
+        // Customer record doesn't exist - they need to register
+        return NextResponse.json(
+          { 
+            error: "Please register your address and Tax ID from the profile page before placing an order." 
+          },
+          { status: 400 }
+        )
+      }
+    }
+
     if (!userId) {
       console.warn("[Group9] No authenticated user found - order will be created without user_id")
     } else {

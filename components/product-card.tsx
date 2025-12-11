@@ -86,14 +86,26 @@ export function ProductCard({
         {/* Rating */}
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1">
-            {[...Array(5)].map((_, i) => (
-              <Star
-                key={i}
-                className={`h-4 w-4 ${
-                  i < Math.floor(rating) ? "fill-[#ffd93d] text-[#ffd93d]" : "fill-none text-gray-400"
-                }`}
-              />
-            ))}
+            {[...Array(5)].map((_, i) => {
+              const starValue = i + 1
+              const isHalfStar = rating >= starValue - 0.5 && rating < starValue
+              const isFullStar = rating >= starValue
+              
+              return (
+                <div key={i} className="relative h-4 w-4">
+                  <Star
+                    className={`h-4 w-4 absolute ${
+                      isFullStar ? "fill-[#ffd93d] text-[#ffd93d]" : "fill-none text-gray-400"
+                    }`}
+                  />
+                  {isHalfStar && (
+                    <div className="absolute overflow-hidden w-2 h-4">
+                      <Star className="h-4 w-4 fill-[#ffd93d] text-[#ffd93d]" />
+                    </div>
+                  )}
+                </div>
+              )
+            })}
           </div>
           <span className="text-xs text-[#0d0d1a] font-semibold">({review_count})</span>
         </div>

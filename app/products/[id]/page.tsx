@@ -185,19 +185,21 @@ export default function ProductDetailPage() {
   }
 
   const handleSubmitReview = async () => {
-    if (!selectedRating || selectedRating < 1 || selectedRating > 5) {
+    // At least one of rating or comment must be provided
+    if (!selectedRating && !reviewComment.trim()) {
       toast({
-        title: "Rating required",
-        description: "Please select a rating between 1 and 5 stars",
+        title: "Rating or comment required",
+        description: "Please provide either a rating or a comment (or both)",
         variant: "destructive",
       })
       return
     }
 
-    if (!reviewComment.trim()) {
+    // If rating is provided, validate it
+    if (selectedRating && (selectedRating < 1 || selectedRating > 5)) {
       toast({
-        title: "Comment required",
-        description: "Please write a comment for your review",
+        title: "Invalid rating",
+        description: "Please select a rating between 1 and 5 stars",
         variant: "destructive",
       })
       return
@@ -210,8 +212,8 @@ export default function ProductDetailPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           product_id: parseInt(params.id as string),
-          rating: selectedRating,
-          comment: reviewComment.trim(),
+          rating: selectedRating || null,
+          comment: reviewComment.trim() || null,
         }),
       })
 
@@ -221,9 +223,12 @@ export default function ProductDetailPage() {
         throw new Error(data.error || "Failed to submit review")
       }
 
+      const hasComment = reviewComment.trim().length > 0
       toast({
-        title: "Review submitted!",
-        description: "Your review has been submitted and will be visible after product manager approval.",
+        title: "Submitted successfully!",
+        description: hasComment 
+          ? "Your rating is visible immediately. Your comment will be visible after product manager approval."
+          : "Your rating has been submitted and is visible immediately.",
       })
 
       // Reset form
@@ -311,14 +316,14 @@ export default function ProductDetailPage() {
     )
   }
 
-  // Calculate average rating from ALL reviews (ratings are visible immediately)
+  // Calculate average rating from ALL reviews with ratings (ratings are visible immediately)
   // But only count reviews with visible comments for review count
-  const allReviewsWithRatings = reviews.filter((r) => r.rating) // All reviews have ratings
+  const allReviewsWithRatings = reviews.filter((r) => r.rating && r.rating > 0) // Only reviews with ratings
   const reviewsWithVisibleComments = reviews.filter((r) => 
     r.status === "approved" || r.is_approved === true || r.commentVisible === true
   )
   const averageRating = allReviewsWithRatings.length > 0
-    ? allReviewsWithRatings.reduce((sum, r) => sum + r.rating, 0) / allReviewsWithRatings.length
+    ? allReviewsWithRatings.reduce((sum, r) => sum + (r.rating || 0), 0) / allReviewsWithRatings.length
     : product.rating || 0
   const reviewCount = reviewsWithVisibleComments.length || product.review_count || 0
   const rating = averageRating
@@ -393,14 +398,26 @@ export default function ProductDetailPage() {
               {/* Rating */}
               <div className="flex items-center gap-2 mb-4">
                 <div className="flex items-center gap-1">
-                  {[...Array(5)].map((_, i) => (
-                    <Star
-                      key={i}
-                      className={`h-5 w-5 ${
-                        i < Math.floor(rating) ? "fill-[#ffd93d] text-[#ffd93d]" : "fill-none text-gray-400"
-                      }`}
-                    />
-                  ))}
+                  {[...Array(5)].map((_, i) => {
+                    const starValue = i + 1
+                    const isHalfStar = rating >= starValue - 0.5 && rating < starValue
+                    const isFullStar = rating >= starValue
+                    
+                    return (
+                      <div key={i} className="relative h-5 w-5">
+                        <Star
+                          className={`h-5 w-5 absolute ${
+                            isFullStar ? "fill-[#ffd93d] text-[#ffd93d]" : "fill-none text-gray-400"
+                          }`}
+                        />
+                        {isHalfStar && (
+                          <div className="absolute overflow-hidden w-2.5 h-5">
+                            <Star className="h-5 w-5 fill-[#ffd93d] text-[#ffd93d]" />
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
                 </div>
                 <span className="text-sm text-[#6c757d] font-semibold">({reviewCount} reviews)</span>
               </div>
@@ -582,14 +599,14 @@ export default function ProductDetailPage() {
                         {/* Rating Selection */}
                         <div>
                           <label className="font-bold text-[#1a1a3e] mb-3 block">
-                            Rating <span className="text-[#dc3545]">*</span>
+                            Rating (Optional)
                           </label>
                           <div className="flex items-center gap-2">
                             {[1, 2, 3, 4, 5].map((star) => (
                               <button
                                 key={star}
                                 type="button"
-                                onClick={() => setSelectedRating(star)}
+                                onClick={() => setSelectedRating(selectedRating === star ? 0 : star)}
                                 className="focus:outline-none transition-transform hover:scale-110"
                               >
                                 <Star
@@ -612,11 +629,11 @@ export default function ProductDetailPage() {
                         {/* Comment Textarea */}
                         <div>
                           <label htmlFor="review-comment" className="font-bold text-[#1a1a3e] mb-2 block">
-                            Your Review <span className="text-[#dc3545]">*</span>
+                            Your Comment (Optional)
                           </label>
                           <Textarea
                             id="review-comment"
-                            placeholder="Share your thoughts about this product..."
+                            placeholder="Share your thoughts about this product... (optional)"
                             value={reviewComment}
                             onChange={(e) => setReviewComment(e.target.value)}
                             className="border-4 border-black min-h-[120px] resize-none"
@@ -630,7 +647,7 @@ export default function ProductDetailPage() {
                         {/* Info Note */}
                         <div className="bg-[#e9ecef] border-2 border-black p-3">
                           <p className="text-sm text-[#6c757d]">
-                            <strong>Note:</strong> Your rating will be visible immediately, but your comment will need product manager approval before it appears.
+                            <strong>Note:</strong> You can rate without commenting, or comment without rating. Ratings are visible immediately. Comments require product manager approval before being displayed.
                           </p>
                         </div>
                       </div>
@@ -649,7 +666,7 @@ export default function ProductDetailPage() {
                         </Button>
                         <Button
                           onClick={handleSubmitReview}
-                          disabled={submittingReview || !selectedRating || !reviewComment.trim()}
+                          disabled={submittingReview || (!selectedRating && !reviewComment.trim())}
                           className="bg-[#ffb347] hover:bg-[#ffd93d] text-black border-4 border-black font-bold"
                         >
                           {submittingReview ? (
@@ -658,7 +675,7 @@ export default function ProductDetailPage() {
                               Submitting...
                             </>
                           ) : (
-                            "Submit Review"
+                            "Submit"
                           )}
                         </Button>
                       </div>
@@ -694,18 +711,30 @@ export default function ProductDetailPage() {
                         <div className="flex items-start justify-between mb-2">
                           <div>
                             <div className="flex items-center gap-2 mb-1">
-                              <div className="flex items-center gap-1">
-                                {[...Array(5)].map((_, i) => (
-                                  <Star
-                                    key={i}
-                                    className={`h-4 w-4 ${
-                                      i < review.rating
-                                        ? "fill-[#ffd93d] text-[#ffd93d]"
-                                        : "fill-none text-gray-400"
-                                    }`}
-                                  />
-                                ))}
-                              </div>
+                              {review.rating && review.rating > 0 ? (
+                                <div className="flex items-center gap-1">
+                                  {[...Array(5)].map((_, i) => {
+                                    const starValue = i + 1
+                                    const isHalfStar = review.rating >= starValue - 0.5 && review.rating < starValue
+                                    const isFullStar = review.rating >= starValue
+                                    
+                                    return (
+                                      <div key={i} className="relative h-4 w-4">
+                                        <Star
+                                          className={`h-4 w-4 absolute ${
+                                            isFullStar ? "fill-[#ffd93d] text-[#ffd93d]" : "fill-none text-gray-400"
+                                          }`}
+                                        />
+                                        {isHalfStar && (
+                                          <div className="absolute overflow-hidden w-2 h-4">
+                                            <Star className="h-4 w-4 fill-[#ffd93d] text-[#ffd93d]" />
+                                          </div>
+                                        )}
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+                              ) : null}
                               <span className="font-bold text-[#1a1a3e]">
                                 {review.profiles?.name || "Anonymous"}
                               </span>

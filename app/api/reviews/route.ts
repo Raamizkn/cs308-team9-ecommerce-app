@@ -145,29 +145,33 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { product_id, rating, comment } = body
 
-    // Validate required fields
-    if (!product_id || !rating || !comment) {
+    // Validate required fields - product_id is required, rating and comment are optional (but at least one must be provided)
+    if (!product_id) {
       return NextResponse.json(
-        { error: "Missing required fields: product_id, rating, and comment are required" },
+        { error: "Missing required field: product_id is required" },
         { status: 400 }
       )
     }
 
-    // Validate rating range (1-5)
-    if (rating < 1 || rating > 5 || !Number.isInteger(rating)) {
+    // At least one of rating or comment must be provided
+    const commentText = comment?.trim() || null
+    if (!rating && !commentText) {
       return NextResponse.json(
-        { error: "Rating must be an integer between 1 and 5" },
+        { error: "At least one of rating or comment must be provided" },
         { status: 400 }
       )
     }
 
-    // Validate comment is not empty
-    if (comment.trim().length === 0) {
-      return NextResponse.json(
-        { error: "Comment cannot be empty" },
-        { status: 400 }
-      )
+    // Validate rating range (1-5) if provided
+    if (rating !== null && rating !== undefined) {
+      if (rating < 1 || rating > 5 || !Number.isInteger(rating)) {
+        return NextResponse.json(
+          { error: "Rating must be an integer between 1 and 5" },
+          { status: 400 }
+        )
+      }
     }
+
 
     // Check if user is authenticated
     const {
@@ -227,7 +231,7 @@ export async function POST(request: NextRequest) {
     // Check if user already reviewed this product
     const { data: existingReview, error: existingError } = await supabase
       .from("reviews")
-      .select("review_id")
+      .select("review_id, comment")
       .eq("product_id", parseInt(product_id))
       .eq("customer_id", user.id)
       .maybeSingle()
@@ -240,22 +244,96 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // If review exists, update it instead of creating new one
     if (existingReview) {
+      // If updating with a comment and there wasn't one before, set status to pending
+      // If updating rating only or comment only, keep existing status
+      const updateData: any = { rating }
+      if (commentText !== null) {
+        updateData.comment = commentText
+        // If adding a comment to a review that didn't have one, set status to pending
+        if (!existingReview.comment && commentText) {
+          updateData.status = "pending"
+        }
+      }
+      
+      const { data: updatedReview, error: updateError } = await supabase
+        .from("reviews")
+        .update(updateData)
+        .eq("review_id", existingReview.review_id)
+        .select(`
+          review_id,
+          product_id,
+          customer_id,
+          rating,
+          comment,
+          status,
+          created_at,
+          products_belong_to:product_id (
+            pid,
+            name
+          )
+        `)
+        .single()
+
+      if (updateError) {
+        console.error("[Group9] Error updating review:", updateError)
+        return NextResponse.json(
+          { error: updateError.message || "Failed to update review" },
+          { status: 500 }
+        )
+      }
+
+      // Fetch customer name
+      const { data: profileData } = await supabase
+        .from("profiles")
+        .select("name")
+        .eq("uid", user.id)
+        .maybeSingle()
+
+      const customerName = profileData?.name || "Anonymous"
+
+      const transformedReview = {
+        id: updatedReview.review_id,
+        review_id: updatedReview.review_id,
+        productId: updatedReview.product_id,
+        productName: updatedReview.products_belong_to?.name || "Unknown Product",
+        customerId: updatedReview.customer_id,
+        customerName: customerName,
+        rating: updatedReview.rating,
+        comment: updatedReview.comment,
+        status: updatedReview.status,
+        createdAt: updatedReview.created_at,
+        profiles: { name: customerName },
+        is_approved: updatedReview.status === "approved",
+      }
+
       return NextResponse.json(
-        { error: "You have already reviewed this product" },
-        { status: 400 }
+        {
+          message: commentText 
+            ? "Review updated. Your comment will be visible after product manager approval."
+            : "Rating updated successfully.",
+          review: transformedReview,
+        },
+        { status: 200 }
       )
     }
 
-    // Create the review
+    // Create new review
+    // Ratings are always visible (status = 'approved'), comments need approval (status = 'pending')
+    // If both rating and comment are provided, status is 'pending' (comment needs approval)
+    // If only rating is provided, status is 'approved' (rating is visible immediately)
+    // If only comment is provided, status is 'pending' (comment needs approval)
+    const reviewStatus = commentText ? "pending" : "approved"
+    
     const { data: newReview, error: insertError } = await supabase
       .from("reviews")
       .insert({
         product_id: parseInt(product_id),
         customer_id: user.id,
-        rating: rating,
-        comment: comment.trim(),
-        status: "pending", // Comments need approval, but ratings are submitted directly
+        rating: rating || null,
+        comment: commentText,
+        status: reviewStatus, // Ratings auto-approve, comments need approval
       })
       .select(`
         review_id,
@@ -305,9 +383,13 @@ export async function POST(request: NextRequest) {
       is_approved: false,
     }
 
+    const message = commentText
+      ? "Review submitted successfully. Your comment will be visible after product manager approval."
+      : "Rating submitted successfully."
+
     return NextResponse.json(
       {
-        message: "Review submitted successfully. It will be visible after product manager approval.",
+        message,
         review: transformedReview,
       },
       { status: 201 }

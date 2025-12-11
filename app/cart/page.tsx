@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import Link from "next/link"
 import Image from "next/image"
+import { useRouter } from "next/navigation"
 import { PixelHeader } from "@/components/pixel-header"
 import { useCart } from "@/lib/cart-context"
 import { Button } from "@/components/ui/button"
@@ -11,6 +12,7 @@ import { Minus, Plus, Trash2, ArrowLeft } from "lucide-react"
 import { getSupabaseBrowserClient } from "@/lib/supabase/client"
 
 export default function CartPage() {
+  const router = useRouter()
   const { items, updateQuantity, removeItem, totalPrice, clearCart } = useCart()
   const [discountCode, setDiscountCode] = useState("")
   const [discount, setDiscount] = useState(0)
@@ -241,16 +243,23 @@ export default function CartPage() {
                   )}
                 </div>
 
-                <Link href="/checkout">
-                  <Button
-                    className="w-full bg-[#ffb347] hover:bg-[#ffd93d] text-black border-4 border-black font-bold text-lg py-6 pixel-shadow-sm disabled:bg-gray-400 disabled:cursor-not-allowed"
-                    disabled={Object.keys(stockWarnings).length > 0}
-                  >
-                    {Object.keys(stockWarnings).length > 0
-                      ? "RESOLVE STOCK ISSUES FIRST"
-                      : "PROCEED TO CHECKOUT"}
-                  </Button>
-                </Link>
+                <Button
+                  onClick={async () => {
+                    const supabase = getSupabaseBrowserClient()
+                    const { data: { user } } = await supabase.auth.getUser()
+                    if (!user) {
+                      router.push("/login")
+                    } else {
+                      router.push("/checkout")
+                    }
+                  }}
+                  className="w-full bg-[#ffb347] hover:bg-[#ffd93d] text-black border-4 border-black font-bold text-lg py-6 pixel-shadow-sm disabled:bg-gray-400 disabled:cursor-not-allowed"
+                  disabled={Object.keys(stockWarnings).length > 0}
+                >
+                  {Object.keys(stockWarnings).length > 0
+                    ? "RESOLVE STOCK ISSUES FIRST"
+                    : "PROCEED TO CHECKOUT"}
+                </Button>
                 {Object.keys(stockWarnings).length > 0 && (
                   <p className="text-[#ff6b9d] text-sm font-bold text-center mt-2">
                     Please remove or update out-of-stock items before checkout
