@@ -81,7 +81,7 @@ export default function ProfilePage() {
 
       // Fetch wishlist items
       let query = supabase.from("wish_for").select("*").eq("uid", user.id)
-      
+
       // Try to order by created_at if it exists, otherwise just fetch
       const { data: wishlistItems, error: wishlistError } = await query
 
@@ -134,7 +134,7 @@ export default function ProfilePage() {
       const wishlistWithProducts = wishlistItems.map((item: any) => {
         const pid = typeof item.pid === "string" ? parseInt(item.pid) : item.pid
         const product = products?.find((p: any) => p.pid === pid)
-        
+
         // Apply the same image mapping logic as in products API
         let imageUrl = product?.image_url || "/placeholder.svg"
         if (product) {
@@ -144,9 +144,15 @@ export default function ProfilePage() {
             imageUrl = '/drago-nova-bakugan.png'
           } else if (product.name === 'Elder Wand Replica') {
             imageUrl = '/elder-wand-replica.png'
+          } else if (product.pid === 3) {
+            imageUrl = '/charizard.png'
+          } else if (product.pid === 4) {
+            imageUrl = '/pokemon.png'
+          } else if (product.pid === 5) {
+            imageUrl = '/skellige_card_set.png'
           }
         }
-        
+
         return {
           ...item,
           pid: pid,
@@ -269,17 +275,17 @@ export default function ProfilePage() {
 
       if (customerError) {
         console.error("[Group9] Error saving customer:", customerError)
-        toast({ 
-          title: "Save failed", 
-          description: customerError.message || "Failed to save customer information.", 
-          variant: "destructive" 
+        toast({
+          title: "Save failed",
+          description: customerError.message || "Failed to save customer information.",
+          variant: "destructive"
         })
         return
       }
 
-      toast({ 
-        title: "Profile saved", 
-        description: "Your customer information has been saved. You are now registered as a customer." 
+      toast({
+        title: "Profile saved",
+        description: "Your customer information has been saved. You are now registered as a customer."
       })
     } catch (e) {
       console.error("[Group9] Error in saveAddress:", e)
