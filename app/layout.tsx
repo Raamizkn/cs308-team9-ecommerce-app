@@ -4,7 +4,7 @@ import { Geist, Press_Start_2P } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
 import { CartProvider } from "@/lib/cart-context"
 import { Toaster } from "@/components/ui/toaster"
-import { ChatWidget } from "@/components/chat-widget"
+import { ChatLoader } from "@/components/chat-loader"
 import "./globals.css"
 
 const _geist = Geist({ subsets: ["latin"] })
@@ -30,7 +30,7 @@ export default function RootLayout({
       <body className={`font-sans antialiased ${_pressStart.variable}`}>
         <CartProvider>
           {children}
-          <ChatWidget />
+          <ChatLoader />
           <Toaster />
         </CartProvider>
         <Analytics />
