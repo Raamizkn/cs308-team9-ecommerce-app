@@ -68,12 +68,16 @@ export default function ProductDetailPage() {
   const [loading, setLoading] = useState(true)
   const [loadingReviews, setLoadingReviews] = useState(true)
   const [quantity, setQuantity] = useState(1)
-  const [showReviewDialog, setShowReviewDialog] = useState(false)
+  const [showRatingDialog, setShowRatingDialog] = useState(false)
+  const [showCommentDialog, setShowCommentDialog] = useState(false)
   const [canReview, setCanReview] = useState(false)
+  const [hasRated, setHasRated] = useState(false)
+  const [hasCommented, setHasCommented] = useState(false)
   const [checkingReviewEligibility, setCheckingReviewEligibility] = useState(false)
   const [selectedRating, setSelectedRating] = useState(0)
   const [reviewComment, setReviewComment] = useState("")
-  const [submittingReview, setSubmittingReview] = useState(false)
+  const [submittingRating, setSubmittingRating] = useState(false)
+  const [submittingComment, setSubmittingComment] = useState(false)
   const [userId, setUserId] = useState<string | null>(null)
 
   // Get wishlist mutate function for cache updates
@@ -182,18 +186,31 @@ export default function ProductDetailPage() {
         order.order_items?.some((item: any) => item.product_id === parseInt(params.id as string))
       )
 
-      // Also check if user already reviewed this product
+      // Check separately if user has rated and if user has commented
       if (hasDeliveredProduct) {
-        const { data: existingReview } = await supabase
+        const { data: existingReviews } = await supabase
           .from("reviews")
-          .select("review_id")
+          .select("review_id, rating, comment")
           .eq("product_id", parseInt(params.id as string))
           .eq("customer_id", user.id)
-          .maybeSingle()
 
-        setCanReview(hasDeliveredProduct && !existingReview)
+        // Check for rating row (rating IS NOT NULL, comment IS NULL)
+        const hasRatingRow = existingReviews?.some(
+          (r: any) => r.rating !== null && r.comment === null
+        )
+        
+        // Check for comment row (comment IS NOT NULL, rating IS NULL)
+        const hasCommentRow = existingReviews?.some(
+          (r: any) => r.comment !== null && r.rating === null
+        )
+
+        setHasRated(!!hasRatingRow)
+        setHasCommented(!!hasCommentRow)
+        setCanReview(hasDeliveredProduct) // Can review if they have delivered product
       } else {
         setCanReview(false)
+        setHasRated(false)
+        setHasCommented(false)
       }
     } catch (error) {
       console.error("[Group9] Error checking review eligibility:", error)
@@ -203,21 +220,10 @@ export default function ProductDetailPage() {
     }
   }
 
-  const handleSubmitReview = async () => {
-    // At least one of rating or comment must be provided
-    if (!selectedRating && !reviewComment.trim()) {
+  const handleSubmitRating = async () => {
+    if (!selectedRating || selectedRating < 1 || selectedRating > 5) {
       toast({
-        title: "Rating or comment required",
-        description: "Please provide either a rating or a comment (or both)",
-        variant: "destructive",
-      })
-      return
-    }
-
-    // If rating is provided, validate it
-    if (selectedRating && (selectedRating < 1 || selectedRating > 5)) {
-      toast({
-        title: "Invalid rating",
+        title: "Rating required",
         description: "Please select a rating between 1 and 5 stars",
         variant: "destructive",
       })
@@ -225,48 +231,96 @@ export default function ProductDetailPage() {
     }
 
     try {
-      setSubmittingReview(true)
+      setSubmittingRating(true)
       const response = await fetch("/api/reviews", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           product_id: parseInt(params.id as string),
-          rating: selectedRating || null,
-          comment: reviewComment.trim() || null,
+          rating: selectedRating,
+          comment: null,
         }),
       })
 
       const data = await response.json()
 
       if (!response.ok) {
-        throw new Error(data.error || "Failed to submit review")
+        throw new Error(data.error || "Failed to submit rating")
       }
 
-      const hasComment = reviewComment.trim().length > 0
       toast({
-        title: "Submitted successfully!",
-        description: hasComment 
-          ? "Your rating is visible immediately. Your comment will be visible after product manager approval."
-          : "Your rating has been submitted and is visible immediately.",
+        title: "Rating submitted!",
+        description: "Your rating has been submitted and is visible immediately.",
       })
 
       // Reset form
       setSelectedRating(0)
-      setReviewComment("")
-      setShowReviewDialog(false)
+      setShowRatingDialog(false)
 
       // Refresh reviews and eligibility
       await fetchReviews()
       await checkReviewEligibility()
     } catch (error: any) {
-      console.error("[Group9] Error submitting review:", error)
+      console.error("[Group9] Error submitting rating:", error)
       toast({
-        title: "Failed to submit review",
+        title: "Failed to submit rating",
         description: error.message || "Something went wrong. Please try again.",
         variant: "destructive",
       })
     } finally {
-      setSubmittingReview(false)
+      setSubmittingRating(false)
+    }
+  }
+
+  const handleSubmitComment = async () => {
+    if (!reviewComment.trim()) {
+      toast({
+        title: "Comment required",
+        description: "Please enter a comment",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      setSubmittingComment(true)
+      const response = await fetch("/api/reviews", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          product_id: parseInt(params.id as string),
+          rating: null,
+          comment: reviewComment.trim(),
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to submit comment")
+      }
+
+      toast({
+        title: "Comment submitted!",
+        description: "Your comment will be visible after product manager approval.",
+      })
+
+      // Reset form
+      setReviewComment("")
+      setShowCommentDialog(false)
+
+      // Refresh reviews and eligibility
+      await fetchReviews()
+      await checkReviewEligibility()
+    } catch (error: any) {
+      console.error("[Group9] Error submitting comment:", error)
+      toast({
+        title: "Failed to submit comment",
+        description: error.message || "Something went wrong. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setSubmittingComment(false)
     }
   }
 
@@ -335,16 +389,55 @@ export default function ProductDetailPage() {
     )
   }
 
-  // Calculate average rating from ALL reviews with ratings (ratings are visible immediately)
-  // But only count reviews with visible comments for review count
-  const allReviewsWithRatings = reviews.filter((r) => r.rating && r.rating > 0) // Only reviews with ratings
-  const reviewsWithVisibleComments = reviews.filter((r) => 
-    r.status === "approved" || r.is_approved === true || r.commentVisible === true
-  )
-  const averageRating = allReviewsWithRatings.length > 0
-    ? allReviewsWithRatings.reduce((sum, r) => sum + (r.rating || 0), 0) / allReviewsWithRatings.length
+  // Separate rating rows (rating IS NOT NULL, comment IS NULL) and comment rows (comment IS NOT NULL, rating IS NULL)
+  const ratingRows = reviews.filter((r) => r.rating !== null && r.rating !== undefined && r.rating > 0 && (!r.comment || r.comment.trim() === ""))
+  const commentRows = reviews.filter((r) => r.comment && r.comment.trim() !== "" && (!r.rating || r.rating === 0))
+  
+  // For display, combine rating rows with their matching comment rows (by customer_id)
+  // If a customer has both a rating row and a comment row, show them together
+  const reviewsToDisplay: Review[] = []
+  
+  // Process rating rows and match with comment rows
+  ratingRows.forEach((ratingRow) => {
+    // Find matching comment row for same customer
+    const matchingCommentIndex = commentRows.findIndex(
+      (c) => c.customerId === ratingRow.customerId
+    )
+    
+    if (matchingCommentIndex !== -1) {
+      // Customer has both rating and comment - combine them
+      const matchingComment = commentRows[matchingCommentIndex]
+      reviewsToDisplay.push({
+        ...ratingRow,
+        comment: matchingComment.comment,
+        commentVisible: matchingComment.status === "approved" || matchingComment.is_approved === true || matchingComment.commentVisible === true,
+      })
+      // Remove comment row from array so we don't add it again
+      commentRows.splice(matchingCommentIndex, 1)
+    } else {
+      // Rating only
+      reviewsToDisplay.push({
+        ...ratingRow,
+        comment: null,
+        commentVisible: false,
+      })
+    }
+  })
+  
+  // Add remaining comment-only rows (comments without ratings)
+  commentRows.forEach((commentRow) => {
+    reviewsToDisplay.push({
+      ...commentRow,
+      rating: 0,
+      commentVisible: commentRow.status === "approved" || commentRow.is_approved === true || commentRow.commentVisible === true,
+    })
+  })
+  
+  // Calculate average rating from rating rows only
+  const averageRating = ratingRows.length > 0
+    ? ratingRows.reduce((sum, r) => sum + (r.rating || 0), 0) / ratingRows.length
     : product.rating || 0
-  const reviewCount = reviewsWithVisibleComments.length || product.review_count || 0
+  const reviewCount = reviewsToDisplay.length || product.review_count || 0
   const rating = averageRating
   const isLowStock = product.stock_quantity < 20 && product.stock_quantity > 0
   const isOutOfStock = product.stock_quantity === 0
@@ -588,118 +681,185 @@ export default function ProductDetailPage() {
                 CUSTOMER REVIEWS
               </h3>
 
-              {/* Write Review Button - Shows only for delivered orders */}
+              {/* Rating and Comment Sections - Shows only for delivered orders */}
               {checkingReviewEligibility ? (
                 <div className="mb-6 p-4 bg-[#e9ecef] border-2 border-black text-center">
                   <div className="inline-block w-6 h-6 border-2 border-black border-t-[#ffb347] rounded-full animate-spin" />
                 </div>
               ) : canReview ? (
-                <div className="mb-6 p-4 bg-[#e9ecef] border-2 border-black">
+                <div className="mb-6 space-y-4">
                   <p className="text-sm text-[#6c757d] mb-3">
                     <strong>Note:</strong> You can only review products you've purchased and received.
                   </p>
-                  <Dialog open={showReviewDialog} onOpenChange={setShowReviewDialog}>
-                    <DialogTrigger asChild>
-                      <Button className="bg-[#ffb347] hover:bg-[#ffd93d] text-black border-4 border-black font-bold w-full">
-                        <Star className="h-4 w-4 mr-2" />
-                        WRITE A REVIEW
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent className="bg-white border-4 border-black max-w-2xl">
-                      <DialogHeader>
-                        <DialogTitle className="font-[family-name:var(--font-pixel)] text-2xl text-[#1a1a3e]">
-                          Write a Review
-                        </DialogTitle>
-                        <DialogDescription className="text-[#6c757d]">
-                          Share your experience with {product.name}
-                        </DialogDescription>
-                      </DialogHeader>
-                      <div className="space-y-6 py-4">
-                        {/* Rating Selection */}
-                        <div>
-                          <label className="font-bold text-[#1a1a3e] mb-3 block">
-                            Rating (Optional)
-                          </label>
-                          <div className="flex items-center gap-2">
-                            {[1, 2, 3, 4, 5].map((star) => (
-                              <button
-                                key={star}
-                                type="button"
-                                onClick={() => setSelectedRating(selectedRating === star ? 0 : star)}
-                                className="focus:outline-none transition-transform hover:scale-110"
-                              >
-                                <Star
-                                  className={`h-10 w-10 ${
-                                    star <= selectedRating
-                                      ? "fill-[#ffd93d] text-[#ffd93d]"
-                                      : "fill-none text-gray-300"
-                                  }`}
-                                />
-                              </button>
-                            ))}
-                            {selectedRating > 0 && (
-                              <span className="ml-2 font-bold text-[#1a1a3e]">
-                                {selectedRating} {selectedRating === 1 ? "star" : "stars"}
-                              </span>
-                            )}
+                  
+                  {/* Rating Section */}
+                  <div className="p-4 bg-[#e9ecef] border-2 border-black">
+                    <div className="flex items-center justify-between mb-3">
+                      <h4 className="font-bold text-[#1a1a3e]">Rate this Product</h4>
+                      {hasRated && (
+                        <span className="text-sm text-[#6bcf7f] font-semibold">✓ You've already rated this product</span>
+                      )}
+                    </div>
+                    <Dialog open={showRatingDialog} onOpenChange={setShowRatingDialog}>
+                      <DialogTrigger asChild>
+                        <Button 
+                          className="bg-[#ffb347] hover:bg-[#ffd93d] text-black border-4 border-black font-bold w-full"
+                          disabled={hasRated}
+                        >
+                          <Star className="h-4 w-4 mr-2" />
+                          {hasRated ? "UPDATE RATING" : "RATE THIS PRODUCT"}
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent className="bg-white border-4 border-black max-w-lg">
+                        <DialogHeader>
+                          <DialogTitle className="font-[family-name:var(--font-pixel)] text-2xl text-[#1a1a3e]">
+                            {hasRated ? "Update Your Rating" : "Rate this Product"}
+                          </DialogTitle>
+                          <DialogDescription className="text-[#6c757d]">
+                            Your rating will be visible immediately.
+                          </DialogDescription>
+                        </DialogHeader>
+                        <div className="space-y-6 py-4">
+                          <div>
+                            <label className="font-bold text-[#1a1a3e] mb-3 block">
+                              Select Your Rating
+                            </label>
+                            <div className="flex items-center gap-2">
+                              {[1, 2, 3, 4, 5].map((star) => (
+                                <button
+                                  key={star}
+                                  type="button"
+                                  onClick={() => setSelectedRating(selectedRating === star ? 0 : star)}
+                                  className="focus:outline-none transition-transform hover:scale-110"
+                                >
+                                  <Star
+                                    className={`h-10 w-10 ${
+                                      star <= selectedRating
+                                        ? "fill-[#ffd93d] text-[#ffd93d]"
+                                        : "fill-none text-gray-300"
+                                    }`}
+                                  />
+                                </button>
+                              ))}
+                              {selectedRating > 0 && (
+                                <span className="ml-2 font-bold text-[#1a1a3e]">
+                                  {selectedRating} {selectedRating === 1 ? "star" : "stars"}
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </div>
-
-                        {/* Comment Textarea */}
-                        <div>
-                          <label htmlFor="review-comment" className="font-bold text-[#1a1a3e] mb-2 block">
-                            Your Comment (Optional)
-                          </label>
-                          <Textarea
-                            id="review-comment"
-                            placeholder="Share your thoughts about this product... (optional)"
-                            value={reviewComment}
-                            onChange={(e) => setReviewComment(e.target.value)}
-                            className="border-4 border-black min-h-[120px] resize-none"
-                            maxLength={1000}
-                          />
-                          <p className="text-xs text-[#6c757d] mt-1">
-                            {reviewComment.length}/1000 characters
-                          </p>
+                        <div className="flex gap-3 justify-end">
+                          <Button
+                            variant="outline"
+                            onClick={() => {
+                              setShowRatingDialog(false)
+                              setSelectedRating(0)
+                            }}
+                            className="border-4 border-black"
+                            disabled={submittingRating}
+                          >
+                            Cancel
+                          </Button>
+                          <Button
+                            onClick={handleSubmitRating}
+                            disabled={submittingRating || !selectedRating}
+                            className="bg-[#ffb347] hover:bg-[#ffd93d] text-black border-4 border-black font-bold"
+                          >
+                            {submittingRating ? (
+                              <>
+                                <div className="inline-block w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin mr-2" />
+                                Submitting...
+                              </>
+                            ) : (
+                              "Submit Rating"
+                            )}
+                          </Button>
                         </div>
+                      </DialogContent>
+                    </Dialog>
+                  </div>
 
-                        {/* Info Note */}
-                        <div className="bg-[#e9ecef] border-2 border-black p-3">
-                          <p className="text-sm text-[#6c757d]">
-                            <strong>Note:</strong> You can rate without commenting, or comment without rating. Ratings are visible immediately. Comments require product manager approval before being displayed.
-                          </p>
+                  {/* Comment Section */}
+                  <div className="p-4 bg-[#e9ecef] border-2 border-black">
+                    <div className="flex items-center justify-between mb-3">
+                      <h4 className="font-bold text-[#1a1a3e]">Post a Comment</h4>
+                      {hasCommented && (
+                        <span className="text-sm text-[#6bcf7f] font-semibold">✓ You've already commented on this product</span>
+                      )}
+                    </div>
+                    <Dialog open={showCommentDialog} onOpenChange={setShowCommentDialog}>
+                      <DialogTrigger asChild>
+                        <Button 
+                          className="bg-[#ffb347] hover:bg-[#ffd93d] text-black border-4 border-black font-bold w-full"
+                          disabled={hasCommented}
+                        >
+                          <MessageSquare className="h-4 w-4 mr-2" />
+                          {hasCommented ? "UPDATE COMMENT" : "POST COMMENT"}
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent className="bg-white border-4 border-black max-w-lg">
+                        <DialogHeader>
+                          <DialogTitle className="font-[family-name:var(--font-pixel)] text-2xl text-[#1a1a3e]">
+                            {hasCommented ? "Update Your Comment" : "Post a Comment"}
+                          </DialogTitle>
+                          <DialogDescription className="text-[#6c757d]">
+                            Your comment will be visible after product manager approval.
+                          </DialogDescription>
+                        </DialogHeader>
+                        <div className="space-y-6 py-4">
+                          <div>
+                            <label htmlFor="comment-text" className="font-bold text-[#1a1a3e] mb-2 block">
+                              Your Comment
+                            </label>
+                            <Textarea
+                              id="comment-text"
+                              placeholder="Share your thoughts about this product..."
+                              value={reviewComment}
+                              onChange={(e) => setReviewComment(e.target.value)}
+                              className="border-4 border-black min-h-[120px] resize-none"
+                              maxLength={1000}
+                            />
+                            <p className="text-xs text-[#6c757d] mt-1">
+                              {reviewComment.length}/1000 characters
+                            </p>
+                          </div>
+                          <div className="bg-[#e9ecef] border-2 border-black p-3">
+                            <p className="text-sm text-[#6c757d]">
+                              <strong>Note:</strong> Comments require product manager approval before being displayed.
+                            </p>
+                          </div>
                         </div>
-                      </div>
-                      <div className="flex gap-3 justify-end">
-                        <Button
-                          variant="outline"
-                          onClick={() => {
-                            setShowReviewDialog(false)
-                            setSelectedRating(0)
-                            setReviewComment("")
-                          }}
-                          className="border-4 border-black"
-                          disabled={submittingReview}
-                        >
-                          Cancel
-                        </Button>
-                        <Button
-                          onClick={handleSubmitReview}
-                          disabled={submittingReview || (!selectedRating && !reviewComment.trim())}
-                          className="bg-[#ffb347] hover:bg-[#ffd93d] text-black border-4 border-black font-bold"
-                        >
-                          {submittingReview ? (
-                            <>
-                              <div className="inline-block w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin mr-2" />
-                              Submitting...
-                            </>
-                          ) : (
-                            "Submit"
-                          )}
-                        </Button>
-                      </div>
-                    </DialogContent>
-                  </Dialog>
+                        <div className="flex gap-3 justify-end">
+                          <Button
+                            variant="outline"
+                            onClick={() => {
+                              setShowCommentDialog(false)
+                              setReviewComment("")
+                            }}
+                            className="border-4 border-black"
+                            disabled={submittingComment}
+                          >
+                            Cancel
+                          </Button>
+                          <Button
+                            onClick={handleSubmitComment}
+                            disabled={submittingComment || !reviewComment.trim()}
+                            className="bg-[#ffb347] hover:bg-[#ffd93d] text-black border-4 border-black font-bold"
+                          >
+                            {submittingComment ? (
+                              <>
+                                <div className="inline-block w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin mr-2" />
+                                Submitting...
+                              </>
+                            ) : (
+                              "Post Comment"
+                            )}
+                          </Button>
+                        </div>
+                      </DialogContent>
+                    </Dialog>
+                  </div>
                 </div>
               ) : (
                 <div className="mb-6 p-4 bg-[#e9ecef] border-2 border-black">
@@ -715,7 +875,7 @@ export default function ProductDetailPage() {
                   <div className="text-center p-8">
                     <div className="inline-block w-8 h-8 border-4 border-black border-t-[#ffb347] rounded-full animate-spin" />
                   </div>
-                ) : allReviewsWithRatings.length === 0 ? (
+                ) : reviewsToDisplay.length === 0 ? (
                   <div className="text-center p-8 border-2 border-dashed border-[#6c757d]">
                     <MessageSquare className="h-12 w-12 text-[#6c757d] mx-auto mb-3" />
                     <p className="text-[#6c757d] font-semibold">
@@ -723,8 +883,7 @@ export default function ProductDetailPage() {
                     </p>
                   </div>
                 ) : (
-                  allReviewsWithRatings.map((review) => {
-                    const commentVisible = review.status === "approved" || review.is_approved === true || review.commentVisible === true
+                  reviewsToDisplay.map((review) => {
                     return (
                       <div key={review.review_id} className="p-4 border-2 border-black bg-[#f8f9fa]">
                         <div className="flex items-start justify-between mb-2">
@@ -755,7 +914,7 @@ export default function ProductDetailPage() {
                                 </div>
                               ) : null}
                               <span className="font-bold text-[#1a1a3e]">
-                                {review.profiles?.name || "Anonymous"}
+                                {review.profiles?.name || review.customerName || "Anonymous"}
                               </span>
                             </div>
                             <p className="text-xs text-[#6c757d]">Verified Purchase</p>
@@ -768,15 +927,17 @@ export default function ProductDetailPage() {
                             })}
                           </span>
                         </div>
-                        {commentVisible && review.comment ? (
-                          <p className="text-[#1a1a3e]">{review.comment}</p>
-                        ) : (
-                          <div className="bg-[#fff3cd] border-2 border-[#ffc107] p-3 rounded">
-                            <p className="text-sm text-[#856404] font-semibold">
-                              ⏳ Comment pending approval by product manager
-                            </p>
-                          </div>
-                        )}
+                        {review.comment ? (
+                          review.commentVisible ? (
+                            <p className="text-[#1a1a3e]">{review.comment}</p>
+                          ) : (
+                            <div className="bg-[#fff3cd] border-2 border-[#ffc107] p-3 rounded">
+                              <p className="text-sm text-[#856404] font-semibold">
+                                ⏳ Comment pending approval by product manager
+                              </p>
+                            </div>
+                          )
+                        ) : null}
                       </div>
                     )
                   })

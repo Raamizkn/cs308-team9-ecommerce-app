@@ -228,171 +228,301 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Check if user already reviewed this product
-    const { data: existingReview, error: existingError } = await supabase
+    // Check separately for existing rating row and comment row
+    // Rating row: rating IS NOT NULL, comment IS NULL
+    // Comment row: comment IS NOT NULL, rating IS NULL
+    
+    const { data: existingReviews, error: existingError } = await supabase
       .from("reviews")
-      .select("review_id, comment")
+      .select("review_id, rating, comment")
       .eq("product_id", parseInt(product_id))
       .eq("customer_id", user.id)
-      .maybeSingle()
 
     if (existingError) {
-      console.error("[Group9] Error checking existing review:", existingError)
+      console.error("[Group9] Error checking existing reviews:", existingError)
       return NextResponse.json(
         { error: "Failed to check existing reviews" },
         { status: 500 }
       )
     }
 
-    // If review exists, update it instead of creating new one
-    if (existingReview) {
-      // If updating with a comment and there wasn't one before, set status to pending
-      // If updating rating only or comment only, keep existing status
-      const updateData: any = { rating }
-      if (commentText !== null) {
-        updateData.comment = commentText
-        // If adding a comment to a review that didn't have one, set status to pending
-        if (!existingReview.comment && commentText) {
-          updateData.status = "pending"
-        }
-      }
-      
-      const { data: updatedReview, error: updateError } = await supabase
-        .from("reviews")
-        .update(updateData)
-        .eq("review_id", existingReview.review_id)
-        .select(`
-          review_id,
-          product_id,
-          customer_id,
-          rating,
-          comment,
-          status,
-          created_at,
-          products_belong_to:product_id (
-            pid,
-            name
-          )
-        `)
-        .single()
-
-      if (updateError) {
-        console.error("[Group9] Error updating review:", updateError)
-        return NextResponse.json(
-          { error: updateError.message || "Failed to update review" },
-          { status: 500 }
-        )
-      }
-
-      // Fetch customer name
-      const { data: profileData } = await supabase
-        .from("profiles")
-        .select("name")
-        .eq("uid", user.id)
-        .maybeSingle()
-
-      const customerName = profileData?.name || "Anonymous"
-
-      const transformedReview = {
-        id: updatedReview.review_id,
-        review_id: updatedReview.review_id,
-        productId: updatedReview.product_id,
-        productName: updatedReview.products_belong_to?.name || "Unknown Product",
-        customerId: updatedReview.customer_id,
-        customerName: customerName,
-        rating: updatedReview.rating,
-        comment: updatedReview.comment,
-        status: updatedReview.status,
-        createdAt: updatedReview.created_at,
-        profiles: { name: customerName },
-        is_approved: updatedReview.status === "approved",
-      }
-
-      return NextResponse.json(
-        {
-          message: commentText 
-            ? "Review updated. Your comment will be visible after product manager approval."
-            : "Rating updated successfully.",
-          review: transformedReview,
-        },
-        { status: 200 }
-      )
-    }
-
-    // Create new review
-    // Ratings are always visible (status = 'approved'), comments need approval (status = 'pending')
-    // If both rating and comment are provided, status is 'pending' (comment needs approval)
-    // If only rating is provided, status is 'approved' (rating is visible immediately)
-    // If only comment is provided, status is 'pending' (comment needs approval)
-    const reviewStatus = commentText ? "pending" : "approved"
+    // Find existing rating row (rating IS NOT NULL, comment IS NULL)
+    const existingRatingRow = existingReviews?.find(
+      (r: any) => r.rating !== null && r.comment === null
+    )
     
-    const { data: newReview, error: insertError } = await supabase
-      .from("reviews")
-      .insert({
-        product_id: parseInt(product_id),
-        customer_id: user.id,
-        rating: rating || null,
-        comment: commentText,
-        status: reviewStatus, // Ratings auto-approve, comments need approval
-      })
-      .select(`
-        review_id,
-        product_id,
-        customer_id,
-        rating,
-        comment,
-        status,
-        created_at,
-        products_belong_to:product_id (
-          pid,
-          name
+    // Find existing comment row (comment IS NOT NULL, rating IS NULL)
+    const existingCommentRow = existingReviews?.find(
+      (r: any) => r.comment !== null && r.rating === null
+    )
+
+    // Handle rating submission
+    if (rating !== null && rating !== undefined) {
+      if (existingRatingRow) {
+        // Update existing rating row
+        const { data: updatedReview, error: updateError } = await supabase
+          .from("reviews")
+          .update({ rating })
+          .eq("review_id", existingRatingRow.review_id)
+          .select(`
+            review_id,
+            product_id,
+            customer_id,
+            rating,
+            comment,
+            status,
+            created_at,
+            products_belong_to:product_id (
+              pid,
+              name
+            )
+          `)
+          .single()
+
+        if (updateError) {
+          console.error("[Group9] Error updating rating:", updateError)
+          return NextResponse.json(
+            { error: updateError.message || "Failed to update rating" },
+            { status: 500 }
+          )
+        }
+
+        // Fetch customer name
+        const { data: profileData } = await supabase
+          .from("profiles")
+          .select("name")
+          .eq("uid", user.id)
+          .maybeSingle()
+
+        const customerName = profileData?.name || "Anonymous"
+
+        const transformedReview = {
+          id: updatedReview.review_id,
+          review_id: updatedReview.review_id,
+          productId: updatedReview.product_id,
+          productName: updatedReview.products_belong_to?.name || "Unknown Product",
+          customerId: updatedReview.customer_id,
+          customerName: customerName,
+          rating: updatedReview.rating,
+          comment: updatedReview.comment,
+          status: updatedReview.status,
+          createdAt: updatedReview.created_at,
+          profiles: { name: customerName },
+          is_approved: updatedReview.status === "approved",
+        }
+
+        return NextResponse.json(
+          {
+            message: "Rating updated successfully.",
+            review: transformedReview,
+          },
+          { status: 200 }
         )
-      `)
-      .single()
+      } else {
+        // Create new rating row (rating NOT NULL, comment NULL, status = 'approved')
+        const { data: newRatingReview, error: insertError } = await supabase
+          .from("reviews")
+          .insert({
+            product_id: parseInt(product_id),
+            customer_id: user.id,
+            rating: rating,
+            comment: null,
+            status: "approved", // Ratings are auto-approved (status doesn't really matter for ratings)
+          })
+          .select(`
+            review_id,
+            product_id,
+            customer_id,
+            rating,
+            comment,
+            status,
+            created_at,
+            products_belong_to:product_id (
+              pid,
+              name
+            )
+          `)
+          .single()
 
-    if (insertError) {
-      console.error("[Group9] Error creating review:", insertError)
-      return NextResponse.json(
-        { error: insertError.message || "Failed to create review" },
-        { status: 500 }
-      )
+        if (insertError) {
+          console.error("[Group9] Error creating rating:", insertError)
+          return NextResponse.json(
+            { error: insertError.message || "Failed to create rating" },
+            { status: 500 }
+          )
+        }
+
+        // Fetch customer name
+        const { data: profileData } = await supabase
+          .from("profiles")
+          .select("name")
+          .eq("uid", user.id)
+          .maybeSingle()
+
+        const customerName = profileData?.name || "Anonymous"
+
+        const transformedReview = {
+          id: newRatingReview.review_id,
+          review_id: newRatingReview.review_id,
+          productId: newRatingReview.product_id,
+          productName: newRatingReview.products_belong_to?.name || "Unknown Product",
+          customerId: newRatingReview.customer_id,
+          customerName: customerName,
+          rating: newRatingReview.rating,
+          comment: newRatingReview.comment,
+          status: newRatingReview.status,
+          createdAt: newRatingReview.created_at,
+          profiles: { name: customerName },
+          is_approved: newRatingReview.status === "approved",
+        }
+
+        return NextResponse.json(
+          {
+            message: "Rating submitted successfully.",
+            review: transformedReview,
+          },
+          { status: 201 }
+        )
+      }
     }
 
-    // Fetch customer name
-    const { data: profileData } = await supabase
-      .from("profiles")
-      .select("name")
-      .eq("uid", user.id)
-      .maybeSingle()
+    // Handle comment submission
+    if (commentText) {
+      if (existingCommentRow) {
+        // Update existing comment row
+        const { data: updatedReview, error: updateError } = await supabase
+          .from("reviews")
+          .update({ 
+            comment: commentText,
+            status: "pending" // Comments always need approval
+          })
+          .eq("review_id", existingCommentRow.review_id)
+          .select(`
+            review_id,
+            product_id,
+            customer_id,
+            rating,
+            comment,
+            status,
+            created_at,
+            products_belong_to:product_id (
+              pid,
+              name
+            )
+          `)
+          .single()
 
-    const customerName = profileData?.name || "Anonymous"
+        if (updateError) {
+          console.error("[Group9] Error updating comment:", updateError)
+          return NextResponse.json(
+            { error: updateError.message || "Failed to update comment" },
+            { status: 500 }
+          )
+        }
 
-    // Transform response
-    const transformedReview = {
-      id: newReview.review_id,
-      review_id: newReview.review_id,
-      productId: newReview.product_id,
-      productName: newReview.products_belong_to?.name || "Unknown Product",
-      customerId: newReview.customer_id,
-      customerName: customerName,
-      rating: newReview.rating,
-      comment: newReview.comment,
-      status: newReview.status,
-      createdAt: newReview.created_at,
-      profiles: { name: customerName },
-      is_approved: false,
+        // Fetch customer name
+        const { data: profileData } = await supabase
+          .from("profiles")
+          .select("name")
+          .eq("uid", user.id)
+          .maybeSingle()
+
+        const customerName = profileData?.name || "Anonymous"
+
+        const transformedReview = {
+          id: updatedReview.review_id,
+          review_id: updatedReview.review_id,
+          productId: updatedReview.product_id,
+          productName: updatedReview.products_belong_to?.name || "Unknown Product",
+          customerId: updatedReview.customer_id,
+          customerName: customerName,
+          rating: updatedReview.rating,
+          comment: updatedReview.comment,
+          status: updatedReview.status,
+          createdAt: updatedReview.created_at,
+          profiles: { name: customerName },
+          is_approved: updatedReview.status === "approved",
+        }
+
+        return NextResponse.json(
+          {
+            message: "Comment updated. Your comment will be visible after product manager approval.",
+            review: transformedReview,
+          },
+          { status: 200 }
+        )
+      } else {
+        // Create new comment row (comment NOT NULL, rating NULL, status = 'pending')
+        const { data: newCommentReview, error: insertError } = await supabase
+          .from("reviews")
+          .insert({
+            product_id: parseInt(product_id),
+            customer_id: user.id,
+            rating: null,
+            comment: commentText,
+            status: "pending", // Comments need approval
+          })
+          .select(`
+            review_id,
+            product_id,
+            customer_id,
+            rating,
+            comment,
+            status,
+            created_at,
+            products_belong_to:product_id (
+              pid,
+              name
+            )
+          `)
+          .single()
+
+        if (insertError) {
+          console.error("[Group9] Error creating comment:", insertError)
+          return NextResponse.json(
+            { error: insertError.message || "Failed to create comment" },
+            { status: 500 }
+          )
+        }
+
+        // Fetch customer name
+        const { data: profileData } = await supabase
+          .from("profiles")
+          .select("name")
+          .eq("uid", user.id)
+          .maybeSingle()
+
+        const customerName = profileData?.name || "Anonymous"
+
+        const transformedReview = {
+          id: newCommentReview.review_id,
+          review_id: newCommentReview.review_id,
+          productId: newCommentReview.product_id,
+          productName: newCommentReview.products_belong_to?.name || "Unknown Product",
+          customerId: newCommentReview.customer_id,
+          customerName: customerName,
+          rating: newCommentReview.rating,
+          comment: newCommentReview.comment,
+          status: newCommentReview.status,
+          createdAt: newCommentReview.created_at,
+          profiles: { name: customerName },
+          is_approved: false,
+        }
+
+        return NextResponse.json(
+          {
+            message: "Comment submitted successfully. Your comment will be visible after product manager approval.",
+            review: transformedReview,
+          },
+          { status: 201 }
+        )
+      }
     }
 
-    const message = commentText
-      ? "Review submitted successfully. Your comment will be visible after product manager approval."
-      : "Rating submitted successfully."
-
+    // Should not reach here due to validation at the top, but just in case
     return NextResponse.json(
-      {
-        message,
-        review: transformedReview,
-      },
-      { status: 201 }
+      { error: "At least one of rating or comment must be provided" },
+      { status: 400 }
     )
   } catch (error) {
     console.error("[Group9] Unexpected error:", error)
