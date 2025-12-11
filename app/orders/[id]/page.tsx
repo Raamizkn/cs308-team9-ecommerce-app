@@ -18,6 +18,17 @@ interface RefundSummary {
   rejected: number
 }
 
+const getProductImage = (productName: string | undefined, currentImageUrl: string | null) => {
+  if (!productName) return "/placeholder.svg"
+  if (productName === 'Time Turner Necklace') return '/time-turner-necklace.png'
+  if (productName === 'Drago Nova Transforming Bakugan') return '/drago-nova-bakugan.png'
+  if (productName === 'Elder Wand Replica') return '/elder-wand-replica.png'
+  if (productName === 'Charizard VMAX Battle Deck') return '/charizard.png'
+  if (productName === 'Pikachu Plush (24 inch)') return '/pokemon.png'
+  if (productName === 'Skellige Faction Card Set') return '/skellige_card_set.png'
+  return currentImageUrl || '/placeholder.svg'
+}
+
 export default function OrderDetailPage() {
   const params = useParams()
   const router = useRouter()
@@ -267,7 +278,7 @@ export default function OrderDetailPage() {
           console.error("[Group9] Error fetching customer info:", error)
         }
       }
-      
+
       // Final fallback: use checkout form details stored in order if profile doesn't have the info
       if (!customerName || customerName === "Customer" || customerName.trim() === "") {
         customerName = order.customer_name || "Customer"
@@ -493,7 +504,7 @@ export default function OrderDetailPage() {
                     <div className="flex gap-4 mb-2">
                       <div className="relative w-20 h-20 bg-[#4ecdc4] border-4 border-black flex-shrink-0">
                         <Image
-                          src={item.products_belong_to?.image_url || "/placeholder.svg"}
+                          src={getProductImage(item.products_belong_to?.name, item.products_belong_to?.image_url)}
                           alt={item.products_belong_to?.name || "Product"}
                           fill
                           className="object-contain"
