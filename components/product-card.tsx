@@ -44,8 +44,8 @@ export function ProductCard({
       {/* Image Container - Clickable */}
       <div className="relative aspect-square bg-[#2a9d8f] border-b-4 border-black overflow-hidden">
         <Link href={`/products/${id}`} className="block w-full h-full">
-          <div className="relative w-full h-full cursor-pointer">
-            <Image src={image_url || "/placeholder.svg"} alt={name} fill className="object-contain" />
+          <div className="relative w-full h-full">
+            <Image src={image_url || "/placeholder.svg"} alt={name} fill className="object-contain" style={{ objectPosition: 'center' }} />
           </div>
         </Link>
         {/* Top-left badges - stacked vertically */}

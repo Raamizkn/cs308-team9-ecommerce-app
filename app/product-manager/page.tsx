@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast"
 import { getSupabaseBrowserClient } from "@/lib/supabase/client"
-import { ArrowLeft, ClipboardList, PackageCheck, PlusCircle, X, LogOut, Download } from "lucide-react"
+import { ArrowLeft, ClipboardList, PackageCheck, PlusCircle, X, LogOut, Download, Upload, Image as ImageIcon } from "lucide-react"
 import { pdf } from "@react-pdf/renderer"
 import { InvoicePDF } from "@/components/invoice-pdf"
 
@@ -109,6 +109,9 @@ export default function ProductManagerDashboardPage() {
 
   const [stockEdits, setStockEdits] = useState<Record<number, string>>({})
   const [newCategory, setNewCategory] = useState("")
+  const [productImage, setProductImage] = useState<File | null>(null)
+  const [uploadingImage, setUploadingImage] = useState(false)
+  const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [newProduct, setNewProduct] = useState({
     name: "",
     sku: "",
@@ -833,6 +836,39 @@ export default function ProductManagerDashboardPage() {
       return
     }
 
+    // Upload image first if provided
+    let imageUrl: string | null = null
+    if (productImage) {
+      try {
+        setUploadingImage(true)
+        const formData = new FormData()
+        formData.append("file", productImage)
+
+        const uploadResponse = await fetch("/api/upload/image", {
+          method: "POST",
+          body: formData,
+        })
+
+        if (!uploadResponse.ok) {
+          const error = await uploadResponse.json()
+          throw new Error(error.error || "Failed to upload image")
+        }
+
+        const uploadData = await uploadResponse.json()
+        imageUrl = uploadData.imageUrl
+      } catch (error) {
+        toast({
+          title: "Image upload failed",
+          description: error instanceof Error ? error.message : "Failed to upload image",
+          variant: "destructive",
+        })
+        setUploadingImage(false)
+        return
+      } finally {
+        setUploadingImage(false)
+      }
+    }
+
     try {
       const response = await fetch("/api/product-manager/products", {
         method: "POST",
@@ -849,6 +885,7 @@ export default function ProductManagerDashboardPage() {
           description: description || null,
           model: model || null,
           warranty_status: warranty || null,
+          image_url: imageUrl,
         }),
       })
 
@@ -875,6 +912,8 @@ export default function ProductManagerDashboardPage() {
         model: "",
         warranty: "",
       })
+      setProductImage(null)
+      setImagePreview(null)
 
       toast({
         title: "Product created",
@@ -1093,9 +1132,76 @@ export default function ProductManagerDashboardPage() {
                 className="border-2 border-black bg-[#f8f9fa]"
                 rows={3}
               />
-              <Button onClick={handleCreateProduct} className="w-full bg-[#4ecdc4] text-[#1a1a3e] border-4 border-black font-bold">
-                <PlusCircle className="h-4 w-4 mr-2" />
-                SAVE PRODUCT DRAFT
+              {/* Image Upload */}
+              <div className="space-y-2">
+                <label className="text-sm font-bold text-[#1a1a3e] flex items-center gap-2">
+                  <ImageIcon className="h-4 w-4" />
+                  Product Image
+                </label>
+                <div className="border-2 border-black bg-[#f8f9fa] p-4">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0]
+                      if (file) {
+                        setProductImage(file)
+                        // Create preview
+                        const reader = new FileReader()
+                        reader.onloadend = () => {
+                          setImagePreview(reader.result as string)
+                        }
+                        reader.readAsDataURL(file)
+                      }
+                    }}
+                    className="w-full text-sm file:mr-4 file:py-2 file:px-4 file:border-2 file:border-black file:bg-white file:font-bold file:cursor-pointer hover:file:bg-[#e9ecef]"
+                    disabled={uploadingImage}
+                  />
+                  {imagePreview && (
+                    <div className="mt-4">
+                      <p className="text-xs text-[#6c757d] mb-2 font-bold">Preview:</p>
+                      <div className="relative w-32 h-32 border-2 border-black overflow-hidden bg-white">
+                        <img 
+                          src={imagePreview} 
+                          alt="Preview" 
+                          className="w-full h-full object-cover" 
+                        />
+                      </div>
+                      <Button
+                        type="button"
+                        onClick={() => {
+                          setProductImage(null)
+                          setImagePreview(null)
+                        }}
+                        className="mt-2 bg-[#dc3545] text-white border-2 border-black font-bold text-xs"
+                        size="sm"
+                      >
+                        <X className="h-3 w-3 mr-1" />
+                        Remove Image
+                      </Button>
+                    </div>
+                  )}
+                </div>
+                <p className="text-xs text-[#6c757d]">
+                  Image will be automatically converted to WebP format for optimal performance
+                </p>
+              </div>
+              <Button 
+                onClick={handleCreateProduct} 
+                disabled={uploadingImage}
+                className="w-full bg-[#4ecdc4] text-[#1a1a3e] border-4 border-black font-bold disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {uploadingImage ? (
+                  <>
+                    <div className="inline-block w-4 h-4 border-2 border-[#1a1a3e] border-t-transparent rounded-full animate-spin mr-2" />
+                    Uploading Image...
+                  </>
+                ) : (
+                  <>
+                    <PlusCircle className="h-4 w-4 mr-2" />
+                    SAVE PRODUCT DRAFT
+                  </>
+                )}
               </Button>
             </div>
           </div>

@@ -36,6 +36,7 @@ CREATE TABLE public.products_belong_to (
   warranty_status TEXT,
   distributor_info TEXT,
   product_cost NUMERIC(10, 2) CHECK (product_cost IS NULL OR product_cost >= 0),
+  image_url TEXT,
   cid INT NOT NULL,
   FOREIGN KEY (cid) REFERENCES public.categories(cid)
     ON DELETE RESTRICT

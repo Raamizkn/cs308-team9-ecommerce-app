@@ -461,12 +461,13 @@ export default function ProductDetailPage() {
         <div className="grid lg:grid-cols-2 gap-8">
           {/* Product Image */}
           <div className="bg-white border-4 border-black p-6 pixel-shadow-sm">
-            <div className="relative aspect-square bg-[#4ecdc4] border-4 border-black overflow-hidden">
+            <div className="relative aspect-square bg-[#2a9d8f] border-4 border-black overflow-hidden">
               <Image
                 src={product.image_url || "/placeholder.svg"}
                 alt={product.name}
                 fill
                 className="object-contain"
+                style={{ objectPosition: 'center' }}
               />
               
               {/* Top-left badges */}
