@@ -39,12 +39,12 @@ export async function GET(
 
     // Find highest discount if multiple exist
     let highestDiscount: { rate: number; campaign_id: number } | null = null
-    
+
     if (discountData && discountData.length > 0) {
       discountData.forEach((item: any) => {
         const rate = item.discount_campaigns?.rate || 0
         const did = item.discount_campaigns?.did
-        
+
         if (!highestDiscount || highestDiscount.rate < rate) {
           highestDiscount = { rate, campaign_id: did }
         }
@@ -54,9 +54,23 @@ export async function GET(
     // Add discount information to product
     const productWithDiscount = {
       ...data,
+      // Set image_url statically for specific products
+      image_url: data.name === 'Time Turner Necklace'
+        ? '/time-turner-necklace.png'
+        : data.name === 'Drago Nova Transforming Bakugan'
+          ? '/drago-nova-bakugan.png'
+          : data.name === 'Elder Wand Replica'
+            ? '/elder-wand-replica.png'
+            : data.name === 'Charizard VMAX Battle Deck'
+              ? '/charizard.png'
+              : data.name === 'Pikachu Plush (24 inch)'
+                ? '/pokemon.png'
+                : data.name === 'Skellige Faction Card Set'
+                  ? '/skellige_card_set.png'
+                  : (data.image_url || '/placeholder.svg'),
       discount_rate: highestDiscount?.rate || null,
       discount_campaign_id: highestDiscount?.campaign_id || null,
-      discounted_price: highestDiscount 
+      discounted_price: highestDiscount
         ? Number((data.price * (1 - highestDiscount.rate)).toFixed(2))
         : null,
       has_discount: !!highestDiscount

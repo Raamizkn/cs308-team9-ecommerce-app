@@ -105,6 +105,7 @@ export default function ProductManagerDashboardPage() {
   const [user, setUser] = useState<any>(null)
   const [checkingAccess, setCheckingAccess] = useState(true)
   const [downloadingInvoiceId, setDownloadingInvoiceId] = useState<string | null>(null)
+  const [deliveryPage, setDeliveryPage] = useState(1)
 
   const [stockEdits, setStockEdits] = useState<Record<number, string>>({})
   const [newCategory, setNewCategory] = useState("")
@@ -125,6 +126,17 @@ export default function ProductManagerDashboardPage() {
   useEffect(() => {
     checkProductManagerAccess()
   }, [])
+
+  // Reset page if current page would be empty
+  useEffect(() => {
+    const itemsPerPage = 10
+    const totalPages = Math.ceil(deliveries.length / itemsPerPage)
+    if (deliveryPage > totalPages && totalPages > 0) {
+      setDeliveryPage(totalPages)
+    } else if (deliveries.length > 0 && deliveryPage < 1) {
+      setDeliveryPage(1)
+    }
+  }, [deliveries.length, deliveryPage])
 
   const checkProductManagerAccess = async () => {
     try {
@@ -226,10 +238,31 @@ export default function ProductManagerDashboardPage() {
         throw ordersError
       }
 
+      // Fetch customer names from profiles
+      const userIds = [...new Set((ordersData || []).map((order: any) => order.user_id).filter(Boolean))]
+      const profilesMap: Record<string, string> = {}
+      
+      if (userIds.length > 0) {
+        const { data: profilesData, error: profilesError } = await supabase
+          .from("profiles")
+          .select("uid, name")
+          .in("uid", userIds)
+        
+        if (profilesError) {
+          console.error("[Group9] Error fetching profiles for deliveries:", profilesError)
+        } else if (profilesData) {
+          profilesData.forEach((profile: any) => {
+            profilesMap[profile.uid] = profile.name || "Customer"
+          })
+        }
+      }
+
       // Transform orders into delivery records
       const deliveryRecords: DeliveryRecord[] = (ordersData || []).flatMap((order: any) => {
-        // Simple customer name - just use "Customer" for now
-        const customerName = order.user_id ? "Customer" : "Guest Customer"
+        // Get customer name from profiles map, fallback to "Customer" or "Guest Customer"
+        const customerName = order.user_id 
+          ? (profilesMap[order.user_id] || "Customer")
+          : "Guest Customer"
         
         // Map each order item to a delivery record
         return (order.order_items || []).map((item: any, index: number) => {
@@ -237,10 +270,10 @@ export default function ProductManagerDashboardPage() {
           let deliveryStatus: "packing" | "in-transit" | "delivered" = "packing"
           if (order.status === "delivered") {
             deliveryStatus = "delivered"
-          } else if (order.status === "shipped") {
+          } else if (order.status === "in-transit") {
             deliveryStatus = "in-transit"
           } else {
-            deliveryStatus = "packing"
+            deliveryStatus = "packing" // Maps to 'processing' in DB
           }
 
           // Calculate due date (7 days from order creation)
@@ -308,18 +341,38 @@ export default function ProductManagerDashboardPage() {
         throw ordersError
       }
 
+      // Fetch customer names from profiles
+      const userIds = [...new Set((ordersData || []).map((order: any) => order.user_id).filter(Boolean))]
+      const profilesMap: Record<string, string> = {}
+      
+      if (userIds.length > 0) {
+        const { data: profilesData, error: profilesError } = await supabase
+          .from("profiles")
+          .select("uid, name")
+          .in("uid", userIds)
+        
+        if (profilesError) {
+          console.error("[Group9] Error fetching profiles for invoices:", profilesError)
+        } else if (profilesData) {
+          profilesData.forEach((profile: any) => {
+            profilesMap[profile.uid] = profile.name || "Customer"
+          })
+        }
+      }
+
       // Transform orders into invoice records
       const invoiceRecords: InvoiceRecord[] = (ordersData || []).map((order: any) => {
-        // Simple customer name - just use "Customer" for now
-        const customerName = order.user_id ? "Customer" : "Guest Customer"
-        const firstProduct = order.order_items?.[0]?.products_belong_to?.name || "Product"
+        // Get customer name from profiles map, fallback to "Customer" or "Guest Customer"
+        const customerName = order.user_id 
+          ? (profilesMap[order.user_id] || "Customer")
+          : "Guest Customer"
         
         // Determine status for display
         let displayStatus: "awaiting-shipment" | "shipped" | "delivered" = "awaiting-shipment"
         if (order.status === "delivered") {
           displayStatus = "delivered"
-        } else if (order.status === "shipped") {
-          displayStatus = "shipped"
+        } else if (order.status === "in-transit") {
+          displayStatus = "shipped" // Invoices use 'shipped' for 'in-transit'
         } else {
           displayStatus = "awaiting-shipment"
         }
@@ -399,9 +452,9 @@ export default function ProductManagerDashboardPage() {
 
       // Calculate totals
       const subtotal = order.order_items?.reduce((sum: number, item: any) => sum + (item.price * item.quantity), 0) || 0
-      const shipping = 10.00
-      const tax = subtotal * 0.08
-      const total = subtotal + shipping + tax
+      const shipping = 0
+      const tax = 0
+      const total = subtotal
 
       // Prepare invoice data
       const invoiceData = {
@@ -718,12 +771,14 @@ export default function ProductManagerDashboardPage() {
       const supabase = getSupabaseBrowserClient()
       
       // Map delivery status to order status
-      let orderStatus: string = "pending"
+      // Database allows: 'processing', 'in-transit', 'delivered', 'cancelled'
+      let orderStatus: string = "processing"
       if (status === "delivered") {
         orderStatus = "delivered"
       } else if (status === "in-transit") {
-        orderStatus = "shipped"
+        orderStatus = "in-transit"  // Fixed: was "shipped" which is not a valid status
       } else {
+        // "packing" maps to "processing"
         orderStatus = "processing"
       }
 
@@ -1101,45 +1156,90 @@ export default function ProductManagerDashboardPage() {
               <p className="text-sm">Orders will appear here once customers place orders.</p>
             </div>
           ) : (
-            <div className="divide-y-2 divide-black">
-              {deliveries.map((delivery) => (
-              <div key={delivery.id} className="p-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                <div>
-                  <div className="flex items-center gap-3 mb-2">
-                    <h3 className="text-2xl font-bold text-[#1a1a3e]">{delivery.product}</h3>
-                    <span className="text-xs font-bold border-2 border-black px-3 py-1 bg-white">
-                      {delivery.quantity} pcs
-                    </span>
-                  </div>
-                  <p className="text-sm text-[#6c757d] font-mono">
-                    Delivery #{delivery.id} • Due {new Date(delivery.dueDate).toLocaleDateString()}
-                  </p>
-                  <p className="text-sm text-[#6c757d]">Customer: {delivery.customer}</p>
-                  <p className="text-sm text-[#6c757d]">Address: {delivery.address}</p>
-                  <p className="text-sm font-bold text-[#1a1a3e] mt-1">Total: ${delivery.total.toFixed(2)}</p>
-                </div>
-                <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
-                  <Select value={delivery.status} onValueChange={(value: DeliveryRecord["status"]) => handleDeliveryStatus(delivery.id, value)}>
-                    <SelectTrigger className="border-2 border-black bg-[#f8f9fa]">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="packing">Packing</SelectItem>
-                      <SelectItem value="in-transit">In Transit</SelectItem>
-                      <SelectItem value="delivered">Delivered</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Button
-                    onClick={() => handleDeliveryStatus(delivery.id, "delivered")}
-                    className="bg-[#6bcf7f] text-[#1a1a3e] border-4 border-black font-bold"
-                  >
-                    <PackageCheck className="h-4 w-4 mr-2" />
-                    MARK DELIVERED
-                  </Button>
-                </div>
+            <>
+              <div className="divide-y-2 divide-black">
+                {(() => {
+                  const itemsPerPage = 10
+                  const startIndex = (deliveryPage - 1) * itemsPerPage
+                  const endIndex = startIndex + itemsPerPage
+                  const paginatedDeliveries = deliveries.slice(startIndex, endIndex)
+                  
+                  return paginatedDeliveries.map((delivery) => (
+                    <div key={delivery.id} className="p-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                      <div>
+                        <div className="flex items-center gap-3 mb-2">
+                          <h3 className="text-2xl font-bold text-[#1a1a3e]">{delivery.product}</h3>
+                          <span className="text-xs font-bold border-2 border-black px-3 py-1 bg-white">
+                            {delivery.quantity} pcs
+                          </span>
+                        </div>
+                        <p className="text-sm text-[#6c757d] font-mono">
+                          Delivery #{delivery.id} • Due {new Date(delivery.dueDate).toLocaleDateString()}
+                        </p>
+                        <p className="text-sm text-[#6c757d]">Customer: {delivery.customer}</p>
+                        <p className="text-sm text-[#6c757d]">Address: {delivery.address}</p>
+                        <p className="text-sm font-bold text-[#1a1a3e] mt-1">Total: ${delivery.total.toFixed(2)}</p>
+                      </div>
+                      <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
+                        <Select value={delivery.status} onValueChange={(value: DeliveryRecord["status"]) => handleDeliveryStatus(delivery.id, value)}>
+                          <SelectTrigger className="border-2 border-black bg-[#f8f9fa]">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="packing">Packing</SelectItem>
+                            <SelectItem value="in-transit">In Transit</SelectItem>
+                            <SelectItem 
+                              value="delivered"
+                              className="bg-[#6bcf7f] text-[#1a1a3e] font-bold hover:bg-[#5bb86f] focus:bg-[#5bb86f] data-[highlighted]:bg-[#5bb86f]"
+                            >
+                              Delivered
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Button
+                          onClick={() => handleDeliveryStatus(delivery.id, "delivered")}
+                          className="bg-[#6bcf7f] text-[#1a1a3e] border-4 border-black font-bold"
+                        >
+                          <PackageCheck className="h-4 w-4 mr-2" />
+                          MARK DELIVERED
+                        </Button>
+                      </div>
+                    </div>
+                  ))
+                })()}
               </div>
-            ))}
-            </div>
+              {/* Pagination Controls */}
+              {(() => {
+                const itemsPerPage = 10
+                const totalPages = Math.ceil(deliveries.length / itemsPerPage)
+                return totalPages > 1 ? (
+                  <div className="border-t-4 border-black p-6 flex items-center justify-between">
+                    <div className="text-sm text-[#6c757d] font-bold">
+                      Showing {((deliveryPage - 1) * itemsPerPage) + 1} - {Math.min(deliveryPage * itemsPerPage, deliveries.length)} of {deliveries.length} deliveries
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        onClick={() => setDeliveryPage(prev => Math.max(1, prev - 1))}
+                        disabled={deliveryPage === 1}
+                        className="bg-white hover:bg-[#e9ecef] text-black border-2 border-black font-bold disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Previous
+                      </Button>
+                      <span className="text-sm font-bold text-[#1a1a3e] px-3">
+                        Page {deliveryPage} of {totalPages}
+                      </span>
+                      <Button
+                        onClick={() => setDeliveryPage(prev => Math.min(totalPages, prev + 1))}
+                        disabled={deliveryPage === totalPages}
+                        className="bg-white hover:bg-[#e9ecef] text-black border-2 border-black font-bold disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Next
+                      </Button>
+                    </div>
+                  </div>
+                ) : null
+              })()}
+            </>
           )}
         </section>
 
@@ -1169,38 +1269,40 @@ export default function ProductManagerDashboardPage() {
                           <p className="text-sm font-mono text-[#6c757d]">Invoice #{invoice.invoiceId}</p>
                           <p className="text-lg font-bold text-[#1a1a3e]">Order {invoice.orderId}</p>
                         </div>
-                        <Button
-                          size="sm"
-                          onClick={() => downloadInvoicePDF(invoice.actualOrderId)}
-                          disabled={downloadingInvoiceId === invoice.actualOrderId}
-                          className="bg-[#4ecdc4] hover:bg-[#3dbcb4] text-[#1a1a3e] border-2 border-black font-bold"
-                        >
-                          {downloadingInvoiceId === invoice.actualOrderId ? (
-                            <>
-                              <div className="inline-block w-3 h-3 border-2 border-[#1a1a3e] border-t-transparent rounded-full animate-spin mr-1" />
-                              Generating...
-                            </>
-                          ) : (
-                            <>
-                              <Download className="h-3 w-3 mr-1" />
-                              PDF
-                            </>
-                          )}
-                        </Button>
+                        <div className="flex items-center gap-2">
+                          <span className={`px-3 py-1.5 border-2 border-black text-xs font-bold whitespace-nowrap ${
+                            invoice.status === "delivered" 
+                              ? "bg-[#6bcf7f] text-[#1a1a3e]"
+                              : invoice.status === "shipped"
+                              ? "bg-[#4ecdc4] text-[#1a1a3e]"
+                              : "bg-[#ffb347] text-[#1a1a3e]"
+                          }`}>
+                            {invoice.status.replace("-", " ").toUpperCase()}
+                          </span>
+                          <Button
+                            size="sm"
+                            onClick={() => downloadInvoicePDF(invoice.actualOrderId)}
+                            disabled={downloadingInvoiceId === invoice.actualOrderId}
+                            className="bg-[#4ecdc4] hover:bg-[#3dbcb4] text-[#1a1a3e] border-2 border-black font-bold h-[28px]"
+                          >
+                            {downloadingInvoiceId === invoice.actualOrderId ? (
+                              <>
+                                <div className="inline-block w-3 h-3 border-2 border-[#1a1a3e] border-t-transparent rounded-full animate-spin mr-1" />
+                                Generating...
+                              </>
+                            ) : (
+                              <>
+                                <Download className="h-3 w-3 mr-1" />
+                                PDF
+                              </>
+                            )}
+                          </Button>
+                        </div>
                       </div>
                       <div className="flex flex-wrap gap-4 text-sm mt-2">
                         <span className="font-bold text-[#1a1a3e]">Customer: {invoice.customer}</span>
                         <span className="font-bold text-[#5b3a8f]">Total: ${invoice.total.toFixed(2)}</span>
                         <span className="text-[#6c757d]">Created: {new Date(invoice.createdAt).toLocaleDateString()}</span>
-                        <span className={`px-2 py-1 border-2 border-black text-xs font-bold ${
-                          invoice.status === "delivered" 
-                            ? "bg-[#6bcf7f] text-[#1a1a3e]"
-                            : invoice.status === "shipped"
-                            ? "bg-[#4ecdc4] text-[#1a1a3e]"
-                            : "bg-[#ffb347] text-[#1a1a3e]"
-                        }`}>
-                          {invoice.status.replace("-", " ").toUpperCase()}
-                        </span>
                       </div>
                     </div>
                   ))}

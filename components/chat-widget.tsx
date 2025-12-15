@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input"
 import { getSupabaseBrowserClient } from "@/lib/supabase/client"
 import { useToast } from "@/hooks/use-toast"
 
-export function ChatWidget() {
+export function ChatWidget({ initialOpen = false }: { initialOpen?: boolean }) {
   const { toast } = useToast()
   const [isOpen, setIsOpen] = useState(false)
   const [messages, setMessages] = useState<any[]>([])
@@ -23,6 +23,10 @@ export function ChatWidget() {
   useEffect(() => {
     checkAuth()
   }, [])
+
+  useEffect(() => {
+    if (initialOpen) setIsOpen(true)
+  }, [initialOpen])
 
   useEffect(() => {
     if (isOpen && (userId || sessionId)) {

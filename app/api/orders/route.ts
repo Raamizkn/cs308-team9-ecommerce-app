@@ -24,6 +24,46 @@ export async function POST(request: Request) {
       console.error("[Group9] Error getting user:", userError)
     }
 
+    // If user is authenticated, check if they have address and tax_id registered
+    if (userId) {
+      const { data: customerData, error: customerError } = await supabase
+        .from("customers")
+        .select("home_address, tax_id")
+        .eq("uid", userId)
+        .maybeSingle()
+
+      if (customerError) {
+        console.error("[Group9] Error checking customer data:", customerError)
+      }
+
+      if (customerData) {
+        const missingFields: string[] = []
+        if (!customerData.home_address || customerData.home_address.trim() === "" || customerData.home_address === "Not provided") {
+          missingFields.push("address")
+        }
+        if (!customerData.tax_id || customerData.tax_id.trim() === "") {
+          missingFields.push("Tax ID")
+        }
+
+        if (missingFields.length > 0) {
+          return NextResponse.json(
+            { 
+              error: `Please register your ${missingFields.join(" and ")} from the profile page before placing an order.` 
+            },
+            { status: 400 }
+          )
+        }
+      } else {
+        // Customer record doesn't exist - they need to register
+        return NextResponse.json(
+          { 
+            error: "Please register your address and Tax ID from the profile page before placing an order." 
+          },
+          { status: 400 }
+        )
+      }
+    }
+
     if (!userId) {
       console.warn("[Group9] No authenticated user found - order will be created without user_id")
     } else {
@@ -82,10 +122,36 @@ export async function POST(request: Request) {
 
     console.log("[Group9] Stock validation passed - proceeding with order creation")
 
-    // Create order
-    const { data: order, error: orderError } = await supabase
+    // Create order - try to store customer_name and customer_email from checkout form
+    // These columns may not exist in older databases, so we handle errors gracefully
+    const orderData: any = {
+      user_id: userId,
+      subtotal,
+      tax_amount,
+      total,
+      shipping_address,
+      payment_method,
+      status: "processing",
+    }
+    
+    // Try to add customer info if provided (columns may not exist)
+    if (customer_name) {
+      orderData.customer_name = customer_name
+    }
+    if (customer_email) {
+      orderData.customer_email = customer_email
+    }
+    
+    let { data: order, error: orderError } = await supabase
       .from("orders")
-      .insert({
+      .insert(orderData)
+      .select()
+      .single()
+    
+    // If insert failed due to missing columns, retry without customer_name/email
+    if (orderError && (orderError.message?.includes("column") || orderError.code === "42703")) {
+      console.log("[Group9] customer_name/email columns don't exist, retrying without them")
+      const orderDataWithoutCustomer: any = {
         user_id: userId,
         subtotal,
         tax_amount,
@@ -93,9 +159,15 @@ export async function POST(request: Request) {
         shipping_address,
         payment_method,
         status: "processing",
-      })
-      .select()
-      .single()
+      }
+      const retryResult = await supabase
+        .from("orders")
+        .insert(orderDataWithoutCustomer)
+        .select()
+        .single()
+      order = retryResult.data
+      orderError = retryResult.error
+    }
 
     if (orderError) {
       console.error("[Group9] Error creating order:", orderError)
@@ -132,6 +204,39 @@ export async function POST(request: Request) {
         console.error("[Group9] Error updating stock:", stockError)
         // Note: At this point order is created but stock update failed
         // This is logged for manual intervention/monitoring
+      }
+    }
+
+    // Send invoice email via n8n (attempt with timeout, but don't fail order)
+    if (customer_email) {
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 8000)
+
+      try {
+        const invoiceResponse = await fetch(`${appUrl}/api/invoice/send`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            order_id: order.id,
+            customer_email: customer_email,
+            customer_name: customer_name || undefined,
+          }),
+          signal: controller.signal,
+        })
+
+        if (!invoiceResponse.ok) {
+          const errorText = await invoiceResponse.text().catch(() => "Unknown error")
+          console.error("[Group9] Invoice webhook responded with error:", errorText)
+        }
+      } catch (error) {
+        if ((error as Error).name === "AbortError") {
+          console.error("[Group9] Invoice webhook request timed out")
+        } else {
+          console.error("[Group9] Error triggering invoice email:", error)
+        }
+      } finally {
+        clearTimeout(timeoutId)
       }
     }
 

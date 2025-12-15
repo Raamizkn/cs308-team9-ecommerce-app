@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { PixelHeader } from "@/components/pixel-header"
@@ -20,7 +20,7 @@ export default function CheckoutPage() {
   const { toast } = useToast()
   const [loading, setLoading] = useState(false)
 
-  const [formData, setFormData] = useState({
+const [formData, setFormData] = useState({
     name: "",
     email: "",
     address: "",
@@ -31,6 +31,40 @@ export default function CheckoutPage() {
     cardExpiry: "",
     cardCvv: "",
   })
+
+  // Pre-fill form with user profile data if logged in
+  useEffect(() => {
+    const loadUserProfile = async () => {
+      const supabase = getSupabaseBrowserClient()
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+
+      if (user) {
+        // Fetch profile data
+        const { data: profileData } = await supabase
+          .from("profiles")
+          .select("name, email")
+          .eq("uid", user.id)
+          .maybeSingle()
+
+        if (profileData) {
+          setFormData((prev) => ({
+            ...prev,
+            name: profileData.name || prev.name,
+            email: profileData.email || user.email || prev.email,
+          }))
+        } else if (user.email) {
+          setFormData((prev) => ({
+            ...prev,
+            email: user.email || prev.email,
+          }))
+        }
+      }
+    }
+
+    loadUserProfile()
+  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()

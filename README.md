@@ -15,6 +15,7 @@ A modern e-commerce platform built with Next.js, React, and TypeScript, featurin
 *   **Wishlist:** Save products for later.
 *   **Chat Support:** (Implied from `app/admin/chat` and `app/api/chat`)
 *   **Refund Requests:** (Implied from `app/api/refunds` and `scripts/01-create-tables.sql`)
+*   **Invoice Email:** Automatic PDF invoice email via n8n upon order placement
 
 ## Technologies Used
 
@@ -45,9 +46,15 @@ Create a `.env.local` file in the root directory and add the following environme
 ```
 NEXT_PUBLIC_SUPABASE_URL=YOUR_SUPABASE_URL
 NEXT_PUBLIC_SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY
+N8N_WEBHOOK_URL=https://your-n8n-instance.com/webhook/invoice-email
+NEXT_PUBLIC_APP_URL=http://localhost:3000
 ```
 
-Replace `YOUR_SUPABASE_URL` and `YOUR_SUPABASE_ANON_KEY` with your actual Supabase project URL and anonymous key.
+Replace the values with your actual:
+- `NEXT_PUBLIC_SUPABASE_URL`: Your Supabase project URL
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`: Your Supabase anonymous key
+- `N8N_WEBHOOK_URL`: Your n8n webhook URL for invoice emails (see `N8N_INVOICE_EMAIL_SETUP.md` for setup)
+- `NEXT_PUBLIC_APP_URL`: Your application URL (use production URL in production)
 
 ### Database Setup
 

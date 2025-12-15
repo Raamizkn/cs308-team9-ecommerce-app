@@ -17,6 +17,8 @@ interface ProductCardProps {
   discount_rate?: number | null
   discounted_price?: number | null
   has_discount?: boolean
+  preloadedWishlistIds?: number[]
+  onWishlistMutate?: () => void
 }
 
 export function ProductCard({
@@ -32,6 +34,8 @@ export function ProductCard({
   discount_rate,
   discounted_price,
   has_discount,
+  preloadedWishlistIds,
+  onWishlistMutate,
 }: ProductCardProps) {
   const displayPrice = has_discount && discounted_price ? discounted_price : price
   const discountPercentage = discount_rate ? Math.round(discount_rate * 100) : 0
@@ -41,7 +45,7 @@ export function ProductCard({
       <div className="relative aspect-square bg-[#2a9d8f] border-b-4 border-black overflow-hidden">
         <Link href={`/products/${id}`} className="block w-full h-full">
           <div className="relative w-full h-full cursor-pointer">
-            <Image src={image_url || "/placeholder.svg"} alt={name} fill className="object-cover" />
+            <Image src={image_url || "/placeholder.svg"} alt={name} fill className="object-contain" />
           </div>
         </Link>
         {/* Top-left badges - stacked vertically */}
@@ -69,7 +73,7 @@ export function ProductCard({
         )}
         {/* Wishlist button overlay on image - clickable and doesn't navigate */}
         <div className="absolute top-2 right-2 z-20" onClick={(e) => e.preventDefault()}>
-          <WishlistButton productId={id} />
+          <WishlistButton productId={id} preloadedWishlistIds={preloadedWishlistIds} onMutate={onWishlistMutate} />
         </div>
       </div>
 
@@ -86,14 +90,26 @@ export function ProductCard({
         {/* Rating */}
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1">
-            {[...Array(5)].map((_, i) => (
-              <Star
-                key={i}
-                className={`h-4 w-4 ${
-                  i < Math.floor(rating) ? "fill-[#ffd93d] text-[#ffd93d]" : "fill-none text-gray-400"
-                }`}
-              />
-            ))}
+            {[...Array(5)].map((_, i) => {
+              const starValue = i + 1
+              const isHalfStar = rating >= starValue - 0.5 && rating < starValue
+              const isFullStar = rating >= starValue
+              
+              return (
+                <div key={i} className="relative h-4 w-4">
+                  <Star
+                    className={`h-4 w-4 absolute ${
+                      isFullStar ? "fill-[#ffd93d] text-[#ffd93d]" : "fill-none text-gray-400"
+                    }`}
+                  />
+                  {isHalfStar && (
+                    <div className="absolute overflow-hidden w-2 h-4">
+                      <Star className="h-4 w-4 fill-[#ffd93d] text-[#ffd93d]" />
+                    </div>
+                  )}
+                </div>
+              )
+            })}
           </div>
           <span className="text-xs text-[#0d0d1a] font-semibold">({review_count})</span>
         </div>

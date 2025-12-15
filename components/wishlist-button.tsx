@@ -3,68 +3,67 @@
 import { useState, useEffect } from "react"
 import { Heart } from "lucide-react"
 import { getSupabaseBrowserClient } from "@/lib/supabase/client"
+import { useWishlistStatus } from "@/hooks/useWishlist"
 import { useToast } from "@/hooks/use-toast"
 import { useRouter } from "next/navigation"
 
 interface WishlistButtonProps {
   productId: string
   className?: string
+  preloadedWishlistIds?: number[]
+  onMutate?: () => void
 }
 
-export function WishlistButton({ productId, className }: WishlistButtonProps) {
-  const [isInWishlist, setIsInWishlist] = useState(false)
-  const [loading, setLoading] = useState(true)
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
+export function WishlistButton({ productId, className, preloadedWishlistIds, onMutate }: WishlistButtonProps) {
+  const [userId, setUserId] = useState<string | null>(null)
+  const [isLoadingUser, setIsLoadingUser] = useState(true)
+  const [localWishlistIds, setLocalWishlistIds] = useState<number[]>(preloadedWishlistIds || [])
   const { toast } = useToast()
   const router = useRouter()
 
-  useEffect(() => {
-    checkWishlistStatus()
-  }, [productId])
+  // Parse product ID to number
+  const pidValue = productId ? parseInt(productId, 10) : null
 
-  const checkWishlistStatus = async () => {
+  // Use preloaded wishlist IDs if available, otherwise fall back to SWR hook
+  const isInWishlist = localWishlistIds.includes(pidValue || 0)
+  const shouldUseSWR = !preloadedWishlistIds
+
+  // Use SWR hook for wishlist status only if preloaded data is not available
+  const { isInWishlist: swrIsInWishlist, isLoading: isSWRLoading, mutate: mutateWishlist } = useWishlistStatus(
+    shouldUseSWR ? userId : null,
+    shouldUseSWR ? pidValue : null
+  )
+
+  // Use preloaded status if available, otherwise use SWR result
+  const actualIsInWishlist = preloadedWishlistIds ? isInWishlist : swrIsInWishlist
+  const isLoading = isLoadingUser || (shouldUseSWR ? isSWRLoading : false)
+
+  // Check authentication on mount
+  useEffect(() => {
+    checkAuth()
+  }, [])
+
+  const checkAuth = async () => {
     try {
       const supabase = getSupabaseBrowserClient()
       const {
         data: { user },
       } = await supabase.auth.getUser()
 
-      if (!user) {
-        setIsAuthenticated(false)
-        setLoading(false)
-        return
-      }
-
-      setIsAuthenticated(true)
-
-      const pidValue = typeof productId === "string" ? parseInt(productId, 10) : productId
-      if (!isNaN(pidValue)) {
-        const { data } = await supabase
-          .from("wish_for")
-          .select("id")
-          .eq("uid", user.id)
-          .eq("pid", pidValue)
-          .maybeSingle()
-
-        setIsInWishlist(!!data)
-      }
-
-      setIsInWishlist(!!data)
+      setUserId(user?.id || null)
     } catch (error) {
-      console.error("[Group9] Error checking wishlist:", error)
+      console.error("[Group9] Error checking auth:", error)
+      setUserId(null)
     } finally {
-      setLoading(false)
+      setIsLoadingUser(false)
     }
   }
 
   const handleToggleWishlist = async () => {
     try {
       const supabase = getSupabaseBrowserClient()
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
 
-      if (!user) {
+      if (!userId) {
         toast({
           title: "Login required",
           description: "Please log in to add items to your wishlist",
@@ -74,37 +73,41 @@ export function WishlistButton({ productId, className }: WishlistButtonProps) {
         return
       }
 
-      if (isInWishlist) {
-        // Remove from wishlist
-        const pidValue = typeof productId === "string" ? parseInt(productId, 10) : productId
-        if (isNaN(pidValue)) {
-          toast({
-            title: "Error",
-            description: "Invalid product ID",
-            variant: "destructive",
-          })
-          return
-        }
+      if (!pidValue || isNaN(pidValue)) {
+        toast({
+          title: "Error",
+          description: "Invalid product ID",
+          variant: "destructive",
+        })
+        return
+      }
 
+      if (actualIsInWishlist) {
+        // Remove from wishlist
         const { error } = await supabase
           .from("wish_for")
           .delete()
-          .eq("uid", user.id)
+          .eq("uid", userId)
           .eq("pid", pidValue)
 
         if (error) throw error
 
-        setIsInWishlist(false)
+        // Update local state immediately for instant UI update
+        setLocalWishlistIds(prev => prev.filter(id => id !== pidValue))
+
         toast({
           title: "Removed from wishlist",
           description: "Item removed from your wishlist",
         })
+        // Revalidate SWR cache and parent
+        mutateWishlist()
+        onMutate?.()
       } else {
         // Ensure user exists in customers table (required by foreign key)
         const { data: existingCustomer } = await supabase
           .from("customers")
           .select("uid")
-          .eq("uid", user.id)
+          .eq("uid", userId)
           .maybeSingle()
 
         if (!existingCustomer) {
@@ -112,14 +115,14 @@ export function WishlistButton({ productId, className }: WishlistButtonProps) {
           const { data: profile }: any = await supabase
             .from("profiles")
             .select("*")
-            .eq("uid", user.id)
+            .eq("uid", userId)
             .maybeSingle()
 
           // Create customer record with profile data or defaults
           const { error: customerError } = await supabase.from("customers").insert({
-            uid: user.id,
+            uid: userId,
             home_address: profile?.address || profile?.home_address || "Not provided",
-            tax_id: `TAX-${user.id.slice(0, 8).toUpperCase()}`, // Generate a unique tax_id
+            tax_id: `TAX-${userId.slice(0, 8).toUpperCase()}`, // Generate a unique tax_id
           })
 
           if (customerError) {
@@ -129,49 +132,48 @@ export function WishlistButton({ productId, className }: WishlistButtonProps) {
         }
 
         // Check if item already exists in wishlist (prevent duplicate)
-        const pidValue = typeof productId === "string" ? parseInt(productId, 10) : productId
-        if (isNaN(pidValue)) {
-          toast({
-            title: "Error",
-            description: "Invalid product ID",
-            variant: "destructive",
-          })
-          return
-        }
-
         const { data: existingWish } = await supabase
           .from("wish_for")
-          .select("id")
-          .eq("uid", user.id)
+          .select("uid, pid")
+          .eq("uid", userId)
           .eq("pid", pidValue)
           .maybeSingle()
 
         if (existingWish) {
-          // Already in wishlist, just update state
-          setIsInWishlist(true)
+          // Already in wishlist, just update SWR
+          mutateWishlist()
+          onMutate?.()
           return
         }
 
         // Add to wishlist
         const { error } = await supabase.from("wish_for").insert({
-          uid: user.id,
+          uid: userId,
           pid: pidValue,
         })
 
         if (error) {
           // If it's a duplicate key error, the item might have been added by another request
           if (error.code === "23505" || error.message?.includes("duplicate")) {
-            setIsInWishlist(true)
+            // Update local state for duplicate too
+            setLocalWishlistIds(prev => [...new Set([...prev, pidValue])])
+            mutateWishlist()
+            onMutate?.()
             return
           }
           throw error
         }
 
-        setIsInWishlist(true)
+        // Update local state immediately for instant UI update
+        setLocalWishlistIds(prev => [...new Set([...prev, pidValue])])
+
         toast({
           title: "Added to wishlist",
           description: "Item added to your wishlist",
         })
+        // Revalidate SWR cache and parent
+        mutateWishlist()
+        onMutate?.()
       }
     } catch (error: any) {
       console.error("[Group9] Error toggling wishlist:", error)
@@ -183,22 +185,19 @@ export function WishlistButton({ productId, className }: WishlistButtonProps) {
     }
   }
 
-  if (loading) {
-    return (
-      <Heart className={`h-5 w-5 text-[#6c757d] ${className || ""}`} />
-    )
-  }
-
   return (
     <button
       onClick={handleToggleWishlist}
       className={`cursor-pointer transition-all hover:scale-110 ${className || ""}`}
-      title={isInWishlist ? "Remove from wishlist" : "Add to wishlist"}
-      aria-label={isInWishlist ? "Remove from wishlist" : "Add to wishlist"}
+      title={actualIsInWishlist ? "Remove from wishlist" : "Add to wishlist"}
+      aria-label={actualIsInWishlist ? "Remove from wishlist" : "Add to wishlist"}
+      disabled={isLoading || !userId}
     >
       <Heart
         className={`h-5 w-5 ${
-          isInWishlist
+          isLoading && !userId
+            ? "text-[#6c757d] fill-none"
+            : actualIsInWishlist
             ? "fill-[#dc3545] text-[#dc3545]"
             : "fill-none text-[#1a1a3e] hover:text-[#dc3545]"
         } transition-colors`}

@@ -290,14 +290,18 @@ export const InvoicePDF = ({ data }: { data: InvoiceData }) => {
                 <Text style={styles.summaryLabel}>Subtotal:</Text>
                 <Text style={styles.summaryValue}>${data.subtotal.toFixed(2)}</Text>
               </View>
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Shipping:</Text>
-                <Text style={styles.summaryValue}>${data.shipping.toFixed(2)}</Text>
-              </View>
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Tax (8%):</Text>
-                <Text style={styles.summaryValue}>${data.tax.toFixed(2)}</Text>
-              </View>
+              {data.tax > 0 && (
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryLabel}>Tax ({((data.tax / data.subtotal) * 100).toFixed(0)}%):</Text>
+                  <Text style={styles.summaryValue}>${data.tax.toFixed(2)}</Text>
+                </View>
+              )}
+              {data.shipping > 0 && (
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryLabel}>Shipping:</Text>
+                  <Text style={styles.summaryValue}>${data.shipping.toFixed(2)}</Text>
+                </View>
+              )}
               <View style={styles.totalRow}>
                 <Text style={styles.totalLabel}>TOTAL:</Text>
                 <Text style={styles.totalValue}>${data.total.toFixed(2)}</Text>
