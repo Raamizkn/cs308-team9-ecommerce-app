@@ -6,6 +6,7 @@ import { ShoppingCart, User, Search, Package, BarChart3, Settings } from "lucide
 import { Button } from "@/components/ui/button"
 import { useCart } from "@/lib/cart-context"
 import { getSupabaseBrowserClient } from "@/lib/supabase/client"
+import { DiscountNotificationBadge } from "@/components/discount-notification-badge"
 
 export function PixelHeader() {
   const { totalItems } = useCart()
@@ -155,6 +156,11 @@ export function PixelHeader() {
                   <User className="h-5 w-5" />
                 </Button>
               </Link>
+            )}
+            
+            {/* Notifications - Only for authenticated customers */}
+            {isAuthenticated && !isSalesManager && !isProductManager && (
+              <DiscountNotificationBadge />
             )}
             
             {/* Orders - Hidden for sales managers and product managers */}

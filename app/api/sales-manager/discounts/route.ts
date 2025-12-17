@@ -64,30 +64,30 @@ export async function POST(request: Request) {
     }
 
     // Get users who have these products in their wishlist
-    // Convert product_ids to TEXT for comparison (wishlist.product_id is TEXT)
-    const productIdsAsText = product_ids.map((id: number) => id.toString())
-
+    // Using RPC function to bypass RLS (sales managers need to see all users' wishlists)
+    console.log("[Group9] Looking for wishlist users with products:", product_ids)
+    
     const { data: wishlistUsers, error: wishlistError } = await supabase
-      .from("wishlist")
-      .select("user_id, product_id")
-      .in("product_id", productIdsAsText)
+      .rpc("get_wishlist_users_for_products", { product_ids: product_ids })
+
+    console.log("[Group9] Wishlist query result:", { wishlistUsers, wishlistError })
 
     let notifiedCount = 0
 
     if (!wishlistError && wishlistUsers && wishlistUsers.length > 0) {
-      // Get unique user IDs
-      const uniqueUserIds = [...new Set(wishlistUsers.map((w) => w.user_id))]
+      console.log("[Group9] Found", wishlistUsers.length, "wishlist entries to notify")
+      // Get unique user IDs (RPC function returns user_id and product_id)
+      const uniqueUserIds = [...new Set(wishlistUsers.map((w: any) => w.user_id))]
 
       // Create notifications for each user-product combination
       const notificationsToInsert = []
 
       for (const wishlistItem of wishlistUsers) {
         // Only create notification if the product_id matches one of the discounted products
-        const productIdInt = parseInt(wishlistItem.product_id, 10)
-        if (product_ids.includes(productIdInt)) {
+        if (product_ids.includes(wishlistItem.product_id)) {
           notificationsToInsert.push({
             user_id: wishlistItem.user_id,
-            product_id: productIdInt,
+            product_id: wishlistItem.product_id,
             discount_id: campaign.did,
             discount_rate: rate,
             is_read: false,
@@ -95,25 +95,34 @@ export async function POST(request: Request) {
         }
       }
 
-      // Insert notifications in batch
+      // Insert notifications using RPC function to bypass RLS
+      console.log("[Group9] Notifications to insert:", notificationsToInsert)
+      
       if (notificationsToInsert.length > 0) {
-        const { error: notificationError } = await supabase
-          .from("discount_notifications")
-          .insert(notificationsToInsert)
-          .select()
+        let successCount = 0
+        for (const notification of notificationsToInsert) {
+          const { data, error: notificationError } = await supabase.rpc("insert_discount_notification", {
+            p_user_id: notification.user_id,
+            p_product_id: notification.product_id,
+            p_discount_id: notification.discount_id,
+            p_discount_rate: notification.discount_rate,
+          })
 
-        if (notificationError) {
-          // If table doesn't exist yet, just log and continue (don't fail the request)
-          if (notificationError.code === "42P01" || notificationError.message?.includes("does not exist")) {
-            console.log("[Group9] discount_notifications table not found - skipping notification creation")
+          if (notificationError) {
+            console.error("[Group9] Error creating notification:", notificationError)
           } else {
-            console.error("[Group9] Error creating notifications:", notificationError)
+            console.log("[Group9] Successfully created notification:", data)
+            successCount++
           }
-          // Don't fail the request if notifications fail, just log it
-        } else {
+        }
+        
+        if (successCount > 0) {
+          console.log("[Group9] Created", successCount, "notifications successfully")
           notifiedCount = uniqueUserIds.length
         }
       }
+    } else {
+      console.log("[Group9] No wishlist users found for these products - no notifications to send")
     }
 
     return NextResponse.json({

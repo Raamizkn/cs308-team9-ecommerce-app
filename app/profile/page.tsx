@@ -117,9 +117,19 @@ export default function ProfilePage() {
         return
       }
 
+      // Fetch products with discount information
       const { data: products, error: productsError } = await supabase
         .from("products_belong_to")
-        .select("*")
+        .select(`
+          *,
+          applies_to (
+            did,
+            discount_campaigns (
+              did,
+              rate
+            )
+          )
+        `)
         .in("pid", productIds)
 
       if (productsError) {
@@ -128,7 +138,7 @@ export default function ProfilePage() {
         return
       }
 
-      console.log("[Group9] Fetched products:", products)
+      console.log("[Group9] Fetched products with discounts:", products)
 
       // Combine wishlist items with their products and apply image mapping
       const wishlistWithProducts = wishlistItems.map((item: any) => {
@@ -153,12 +163,28 @@ export default function ProfilePage() {
           }
         }
 
+        // Calculate discount if available
+        let discountRate = 0
+        if (product?.applies_to && product.applies_to.length > 0) {
+          // Get the highest discount rate if multiple discounts apply
+          for (const apply of product.applies_to) {
+            if (apply.discount_campaigns?.rate && apply.discount_campaigns.rate > discountRate) {
+              discountRate = apply.discount_campaigns.rate
+            }
+          }
+        }
+
+        const originalPrice = product?.price || 0
+        const discountedPrice = discountRate > 0 ? originalPrice * (1 - discountRate) : originalPrice
+
         return {
           ...item,
           pid: pid,
           products_belong_to: product ? {
             ...product,
-            image_url: imageUrl
+            image_url: imageUrl,
+            discount_rate: discountRate,
+            discounted_price: discountedPrice,
           } : null,
         }
       })
@@ -435,9 +461,25 @@ export default function ProfilePage() {
                         </Link>
 
                         <div className="flex items-center justify-between">
-                          <span className="font-[family-name:var(--font-pixel)] text-xl text-[#1a1a3e]">
-                            ${item.products_belong_to?.price || 0}
-                          </span>
+                          <div className="flex flex-col">
+                            {item.products_belong_to?.discount_rate > 0 ? (
+                              <>
+                                <span className="text-sm text-[#6c757d] line-through">
+                                  ${(item.products_belong_to?.price || 0).toFixed(2)}
+                                </span>
+                                <span className="font-[family-name:var(--font-pixel)] text-xl text-[#dc3545]">
+                                  ${(item.products_belong_to?.discounted_price || 0).toFixed(2)}
+                                </span>
+                                <span className="text-xs font-bold text-white bg-[#dc3545] px-1 border border-black">
+                                  {Math.round(item.products_belong_to.discount_rate * 100)}% OFF
+                                </span>
+                              </>
+                            ) : (
+                              <span className="font-[family-name:var(--font-pixel)] text-xl text-[#1a1a3e]">
+                                ${(item.products_belong_to?.price || 0).toFixed(2)}
+                              </span>
+                            )}
+                          </div>
                           <Button
                             onClick={(e) => {
                               e.preventDefault()
