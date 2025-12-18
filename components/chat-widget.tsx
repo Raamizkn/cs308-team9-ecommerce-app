@@ -17,8 +17,10 @@ export function ChatWidget({ initialOpen = false }: { initialOpen?: boolean }) {
   const [loading, setLoading] = useState(false)
   const [attachments, setAttachments] = useState<File[]>([])
   const [uploading, setUploading] = useState(false)
+  const [isNearBottom, setIsNearBottom] = useState(true)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const messagesContainerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     checkAuth()
@@ -56,8 +58,33 @@ export function ChatWidget({ initialOpen = false }: { initialOpen?: boolean }) {
   }, [isOpen, userId, sessionId])
 
   useEffect(() => {
+    // Only auto-scroll if user is near bottom
+    if (isNearBottom) {
     scrollToBottom()
-  }, [messages])
+    }
+  }, [messages, isNearBottom])
+
+  // Detect scroll position
+  useEffect(() => {
+    const container = messagesContainerRef.current
+    if (!container) return
+
+    const handleScroll = () => {
+      const { scrollTop, scrollHeight, clientHeight } = container
+      // Consider "near bottom" if within 100px of bottom
+      const threshold = 100
+      const isAtBottom = scrollHeight - scrollTop - clientHeight < threshold
+      setIsNearBottom(isAtBottom)
+    }
+
+    container.addEventListener('scroll', handleScroll)
+    // Check initial position
+    handleScroll()
+
+    return () => {
+      container.removeEventListener('scroll', handleScroll)
+    }
+  }, [isOpen, userId, sessionId]) // Re-check when chat opens or user changes
 
   const checkAuth = async () => {
     const supabase = getSupabaseBrowserClient()
@@ -202,6 +229,8 @@ export function ChatWidget({ initialOpen = false }: { initialOpen?: boolean }) {
       setNewMessage("")
       setAttachments([])
       fetchMessages()
+      // Force scroll when sending your own message
+      setTimeout(() => scrollToBottom(true), 100)
     } catch (error) {
       console.error("[Group9] Error sending message:", error)
       toast({
@@ -219,8 +248,10 @@ export function ChatWidget({ initialOpen = false }: { initialOpen?: boolean }) {
     return <FileText className="h-4 w-4" />
   }
 
-  const scrollToBottom = () => {
+  const scrollToBottom = (force = false) => {
+    if (force || isNearBottom) {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+    }
   }
 
   // Don't show chat widget for support agents (they have their own interface)
@@ -261,7 +292,7 @@ export function ChatWidget({ initialOpen = false }: { initialOpen?: boolean }) {
           </div>
 
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-[#f8f9fa]">
+          <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-4 space-y-3 bg-[#f8f9fa]">
             {messages.length === 0 ? (
               <div className="text-center py-8">
                 <p className="text-[#6c757d] font-semibold">No messages yet</p>

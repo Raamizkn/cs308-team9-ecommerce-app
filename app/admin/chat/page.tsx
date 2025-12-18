@@ -25,8 +25,10 @@ export default function AdminChatPage() {
   const [loadingContext, setLoadingContext] = useState(false)
   const [currentAgentId, setCurrentAgentId] = useState<string | null>(null)
   const [filter, setFilter] = useState<"all" | "unclaimed" | "claimed" | "my_claims">("all")
+  const [isNearBottom, setIsNearBottom] = useState(true)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const messagesContainerRef = useRef<HTMLDivElement>(null)
 
   const handleLogout = async () => {
     try {
@@ -95,8 +97,33 @@ export default function AdminChatPage() {
   }, [selectedUser, conversations])
 
   useEffect(() => {
+    // Only auto-scroll if user is near bottom
+    if (isNearBottom) {
     scrollToBottom()
-  }, [messages])
+    }
+  }, [messages, isNearBottom])
+
+  // Detect scroll position
+  useEffect(() => {
+    const container = messagesContainerRef.current
+    if (!container) return
+
+    const handleScroll = () => {
+      const { scrollTop, scrollHeight, clientHeight } = container
+      // Consider "near bottom" if within 100px of bottom
+      const threshold = 100
+      const isAtBottom = scrollHeight - scrollTop - clientHeight < threshold
+      setIsNearBottom(isAtBottom)
+    }
+
+    container.addEventListener('scroll', handleScroll)
+    // Check initial position
+    handleScroll()
+
+    return () => {
+      container.removeEventListener('scroll', handleScroll)
+    }
+  }, [selectedUser]) // Re-check when conversation changes
 
   const fetchConversations = async () => {
     try {
@@ -394,6 +421,8 @@ export default function AdminChatPage() {
       setNewMessage("")
       setAttachments([])
       fetchMessages()
+      // Force scroll when sending your own message
+      setTimeout(() => scrollToBottom(true), 100)
     } catch (error) {
       console.error("[Group9] Error sending message:", error)
       toast({
@@ -411,8 +440,10 @@ export default function AdminChatPage() {
     return <FileText className="h-4 w-4" />
   }
 
-  const scrollToBottom = () => {
+  const scrollToBottom = (force = false) => {
+    if (force || isNearBottom) {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+    }
   }
 
   return (
@@ -461,7 +492,7 @@ export default function AdminChatPage() {
             }`}
           >
             MY CLAIMS ({conversations.filter((c: any) => c.claimed_by === currentAgentId).length})
-          </Button>
+            </Button>
         </div>
 
         <div className="grid lg:grid-cols-12 gap-6">
@@ -495,20 +526,20 @@ export default function AdminChatPage() {
                           isSelected ? "bg-[#4ecdc4]" : "bg-white"
                         }`}
                       >
-                        <button
-                          onClick={() => setSelectedUser(conv.user_id)}
-                          className={`w-full p-4 text-left hover:bg-[#f8f9fa] transition-colors ${
+                    <button
+                      onClick={() => setSelectedUser(conv.user_id)}
+                      className={`w-full p-4 text-left hover:bg-[#f8f9fa] transition-colors ${
                             isSelected ? "bg-[#4ecdc4]" : ""
-                          }`}
-                        >
-                          <div className="flex items-center gap-3">
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
                             <div className={`w-10 h-10 border-2 border-black flex items-center justify-center flex-shrink-0 ${
                               isClaimed ? (isMyClaim ? "bg-[#6bcf7f]" : "bg-[#ffb347]") : "bg-[#5b3a8f]"
                             }`}>
                               <User className={`h-5 w-5 ${isClaimed ? "text-[#1a1a3e]" : "text-white"}`} />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="font-bold text-[#1a1a3e] truncate">{conv.users?.name || "User"}</p>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-bold text-[#1a1a3e] truncate">{conv.users?.name || "User"}</p>
                               <p className="text-xs text-[#6c757d] truncate">{conv.users?.email || "No email"}</p>
                               {isClaimed && (
                                 <p className="text-xs mt-1">
@@ -578,7 +609,7 @@ export default function AdminChatPage() {
               </div>
 
               {/* Messages */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-[#f8f9fa]">
+              <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-4 space-y-3 bg-[#f8f9fa]">
                 {!selectedUser ? (
                   <div className="flex items-center justify-center h-full">
                     <p className="text-[#6c757d] font-semibold">Select a conversation to start chatting</p>
