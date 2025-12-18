@@ -114,7 +114,7 @@ export default function ProductDetailPage() {
           description: data.error,
           variant: "destructive",
         })
-        router.push("/catalog")
+        router.push("/")
         return
       }
 
@@ -378,9 +378,9 @@ export default function ProductDetailPage() {
         <main className="container mx-auto px-4 py-12">
           <div className="text-center py-20">
             <p className="text-2xl font-bold text-[#6c757d] mb-6">Product not found</p>
-            <Link href="/catalog">
+            <Link href="/">
               <Button className="bg-[#ffb347] hover:bg-[#ffd93d] text-black border-4 border-black font-bold text-lg px-8 py-6">
-                BACK TO CATALOG
+                BACK TO HOME
               </Button>
             </Link>
           </div>
@@ -450,10 +450,10 @@ export default function ProductDetailPage() {
 
       <main className="container mx-auto px-4 py-12">
         <div className="mb-8">
-          <Link href="/catalog">
+          <Link href="/">
             <Button className="bg-white border-4 border-black text-black hover:bg-[#e9ecef] font-bold mb-4">
               <ArrowLeft className="h-4 w-4 mr-2" />
-              BACK TO CATALOG
+              BACK TO HOME
             </Button>
           </Link>
         </div>

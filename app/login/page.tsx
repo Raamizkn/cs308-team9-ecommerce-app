@@ -85,9 +85,9 @@ export default function LoginPage() {
       } else if (!supportAgentError && supportAgent) {
         toast({
           title: "Welcome back!",
-          description: "You have successfully logged in",
+          description: "You have successfully logged in as Support Agent",
         })
-        router.push("/admin")
+        router.push("/admin/chat")
       } else {
         toast({
           title: "Welcome back!",

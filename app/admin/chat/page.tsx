@@ -6,11 +6,13 @@ import { PixelHeader } from "@/components/pixel-header"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { getSupabaseBrowserClient } from "@/lib/supabase/client"
-import { ArrowLeft, Send, User, Paperclip, Image, FileText, X as XIcon, ShoppingCart, Heart, Package } from "lucide-react"
+import { Send, User, Paperclip, Image, FileText, X as XIcon, ShoppingCart, Heart, Package, LogOut } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { useRouter } from "next/navigation"
 
 export default function AdminChatPage() {
   const { toast } = useToast()
+  const router = useRouter()
   const [conversations, setConversations] = useState<any[]>([])
   const [selectedUser, setSelectedUser] = useState<string | null>(null)
   const [messages, setMessages] = useState<any[]>([])
@@ -22,6 +24,37 @@ export default function AdminChatPage() {
   const [loadingContext, setLoadingContext] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  const handleLogout = async () => {
+    try {
+      const supabase = getSupabaseBrowserClient()
+      const { error } = await supabase.auth.signOut()
+
+      if (error) {
+        toast({
+          title: "Logout failed",
+          description: error.message,
+          variant: "destructive",
+        })
+        return
+      }
+
+      toast({
+        title: "Logged out",
+        description: "You have been successfully logged out",
+      })
+
+      router.push("/")
+      router.refresh()
+    } catch (error) {
+      console.error("[Group9] Logout error:", error)
+      toast({
+        title: "Logout failed",
+        description: "Something went wrong. Please try again.",
+        variant: "destructive",
+      })
+    }
+  }
 
   useEffect(() => {
     fetchConversations()
@@ -45,14 +78,64 @@ export default function AdminChatPage() {
   const fetchConversations = async () => {
     try {
       const supabase = getSupabaseBrowserClient()
-      const { data } = await supabase
+      // Get all unique user_ids from chat messages
+      const { data: messages, error } = await supabase
         .from("chat_messages")
-        .select("user_id, users(name, email)")
+        .select("user_id, created_at")
         .order("created_at", { ascending: false })
 
-      // Get unique users
-      const uniqueUsers = Array.from(new Map(data?.map((item) => [item.user_id, item])).values())
-      setConversations(uniqueUsers)
+      if (error) {
+        console.error("[Group9] Error fetching conversations:", error)
+        return
+      }
+
+      // Get unique user_ids
+      const uniqueUserIds = Array.from(new Set(messages?.map((m) => m.user_id) || []))
+
+      // Fetch user info for each unique user_id
+      const conversationsWithInfo = await Promise.all(
+        uniqueUserIds.map(async (userId) => {
+          // Check if it's a UUID (logged-in user) or guest
+          if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) {
+            const { data: profile } = await supabase
+              .from("profiles")
+              .select("name, uid")
+              .eq("uid", userId)
+              .maybeSingle()
+
+            // Fetch email from API
+            let userEmail = null
+            try {
+              const response = await fetch(`/api/admin/user-email?user_id=${userId}`)
+              if (response.ok) {
+                const data = await response.json()
+                userEmail = data.email
+              }
+            } catch (error) {
+              console.error("[Group9] Error fetching email for conversation:", error)
+            }
+
+            return {
+              user_id: userId,
+              users: {
+                name: profile?.name || "User",
+                email: userEmail,
+              },
+            }
+          } else {
+            // Guest user
+            return {
+              user_id: userId,
+              users: {
+                name: "Guest User",
+                email: null,
+              },
+            }
+          }
+        })
+      )
+
+      setConversations(conversationsWithInfo)
     } catch (error) {
       console.error("[Group9] Error fetching conversations:", error)
     }
@@ -80,52 +163,54 @@ export default function AdminChatPage() {
     try {
       const supabase = getSupabaseBrowserClient()
 
-      // Fetch customer profile
-      const { data: profile } = await supabase
+      // Fetch customer profile (profiles table uses 'uid' not 'id')
+      const { data: profile, error: profileError } = await supabase
         .from("profiles")
         .select("*")
-        .eq("id", selectedUser)
-        .single()
+        .eq("uid", selectedUser)
+        .maybeSingle()
 
-      // Fetch recent orders
-      const { data: orders } = await supabase
-        .from("orders")
-        .select("id, created_at, status, total_amount")
-        .eq("user_id", selectedUser)
-        .order("created_at", { ascending: false })
-        .limit(5)
+      if (profileError) {
+        console.error("[Group9] Error fetching profile:", profileError)
+      }
 
-      // Fetch cart items
-      const { data: cartItems } = await supabase
-        .from("contains_item")
-        .select(`
-          quantity,
-          products (
-            name,
-            price,
-            image_url
-          )
-        `)
-        .eq("user_id", selectedUser)
+      // Fetch email from auth.users using Admin API
+      let userEmail = null
+      try {
+        const response = await fetch(`/api/admin/user-email?user_id=${selectedUser}`)
+        if (response.ok) {
+          const data = await response.json()
+          userEmail = data.email
+        }
+      } catch (error) {
+        console.error("[Group9] Error fetching user email:", error)
+      }
 
-      // Fetch wishlist
-      const { data: wishlist } = await supabase
-        .from("wish_for")
-        .select(`
-          products (
-            name,
-            price,
-            image_url
-          )
-        `)
-        .eq("user_id", selectedUser)
+      // Fetch customer context using admin API (bypasses RLS)
+      let orders: any[] = []
+      let cartItems: any[] = []
+      let formattedWishlist: any[] = []
+
+      try {
+        const contextResponse = await fetch(`/api/admin/customer-context?user_id=${selectedUser}`)
+        if (contextResponse.ok) {
+          const contextData = await contextResponse.json()
+          orders = contextData.orders || []
+          cartItems = contextData.cart || []
+          formattedWishlist = contextData.wishlist || []
+        } else {
+          console.error("[Group9] Error fetching customer context:", await contextResponse.text())
+        }
+      } catch (error) {
+        console.error("[Group9] Error fetching customer context:", error)
+      }
 
       setCustomerContext({
         isGuest: false,
-        profile,
+        profile: profile ? { ...profile, email: userEmail } : null,
         orders: orders || [],
         cart: cartItems || [],
-        wishlist: wishlist || [],
+        wishlist: formattedWishlist || [],
       })
     } catch (error) {
       console.error("[Group9] Error fetching customer context:", error)
@@ -241,15 +326,18 @@ export default function AdminChatPage() {
       <PixelHeader />
 
       <main className="container mx-auto px-4 py-12">
-        <div className="mb-8">
-          <Link href="/admin">
-            <Button className="bg-white border-4 border-black text-black hover:bg-[#e9ecef] font-bold mb-4">
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              BACK TO DASHBOARD
-            </Button>
-          </Link>
-          <h1 className="font-[family-name:var(--font-pixel)] text-4xl text-[#1a1a3e] mb-2">LIVE CHAT</h1>
-          <p className="text-[#6c757d] font-semibold">{conversations.length} active conversations</p>
+        <div className="mb-8 flex items-center justify-between">
+          <div>
+            <h1 className="font-[family-name:var(--font-pixel)] text-4xl text-[#1a1a3e] mb-2">LIVE CHAT</h1>
+            <p className="text-[#6c757d] font-semibold">{conversations.length} active conversations</p>
+          </div>
+          <Button
+            onClick={handleLogout}
+            className="bg-[#dc3545] hover:bg-[#c82333] text-white border-4 border-black font-bold"
+          >
+            <LogOut className="h-4 w-4 mr-2" />
+            LOGOUT
+          </Button>
         </div>
 
         <div className="grid lg:grid-cols-12 gap-6">
@@ -333,20 +421,31 @@ export default function AdminChatPage() {
                         <p className="text-sm text-[#1a1a3e] leading-relaxed">{msg.message}</p>
                         
                         {/* Attachments Display */}
-                        {msg.attachments && msg.attachments.length > 0 && (
-                          <div className="mt-2 space-y-1">
-                            {msg.attachments.map((file: any, idx: number) => (
-                              <div
-                                key={idx}
-                                className="flex items-center gap-2 p-2 bg-white/50 border border-black text-xs"
-                              >
-                                {getFileIcon(file.type)}
-                                <span className="truncate flex-1">{file.name}</span>
-                                <span className="text-[#6c757d]">{(file.size / 1024).toFixed(1)}KB</span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
+                        {(() => {
+                          let attachmentsArray = msg.attachments
+                          // Handle JSONB - might be string or already parsed
+                          if (typeof attachmentsArray === 'string') {
+                            try {
+                              attachmentsArray = JSON.parse(attachmentsArray)
+                            } catch (e) {
+                              attachmentsArray = null
+                            }
+                          }
+                          return attachmentsArray && Array.isArray(attachmentsArray) && attachmentsArray.length > 0 ? (
+                            <div className="mt-2 space-y-1">
+                              {attachmentsArray.map((file: any, idx: number) => (
+                                <div
+                                  key={idx}
+                                  className="flex items-center gap-2 p-2 bg-white/50 border border-black text-xs"
+                                >
+                                  {getFileIcon(file.type)}
+                                  <span className="truncate flex-1">{file.name}</span>
+                                  <span className="text-[#6c757d]">{file.size ? (file.size / 1024).toFixed(1) + 'KB' : ''}</span>
+                                </div>
+                              ))}
+                            </div>
+                          ) : null
+                        })()}
 
                         <p className="text-xs text-[#6c757d] mt-1">
                           {new Date(msg.created_at).toLocaleTimeString("en-US", {

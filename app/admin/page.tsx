@@ -87,6 +87,12 @@ export default function AdminDashboard() {
         return
       }
 
+      // Redirect support agents directly to chat interface
+      if (resolvedRole === "support_agent") {
+        router.push("/admin/chat")
+        return
+      }
+
       setUser({
         id: profile.uid,
         name: profile.name,
@@ -144,32 +150,12 @@ export default function AdminDashboard() {
             </Link>
           )}
 
-          {user?.role === "support_agent" && (
-            <Link href="/admin/support">
-              <div className="bg-[#ff6b9d] border-4 border-black p-8 pixel-shadow hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all cursor-pointer">
-                <MessageSquare className="h-12 w-12 text-white mb-4" />
-                <h2 className="font-bold text-2xl text-white mb-2">CUSTOMER SUPPORT</h2>
-                <p className="text-white">Handle refunds and support tickets</p>
-              </div>
-            </Link>
-          )}
-
-          {(user?.role === "sales_manager" || user?.role === "support_agent") && (
+          {user?.role === "sales_manager" && (
             <Link href="/admin/orders">
               <div className="bg-[#5b3a8f] border-4 border-black p-8 pixel-shadow hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all cursor-pointer">
                 <Users className="h-12 w-12 text-white mb-4" />
                 <h2 className="font-bold text-2xl text-white mb-2">ORDER MANAGEMENT</h2>
                 <p className="text-white">View and manage all orders</p>
-              </div>
-            </Link>
-          )}
-
-          {user?.role === "support_agent" && (
-            <Link href="/admin/chat">
-              <div className="bg-[#6bcf7f] border-4 border-black p-8 pixel-shadow hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all cursor-pointer">
-                <MessageSquare className="h-12 w-12 text-[#1a1a3e] mb-4" />
-                <h2 className="font-bold text-2xl text-[#1a1a3e] mb-2">LIVE CHAT</h2>
-                <p className="text-[#0d0d1a]">Respond to customer messages</p>
               </div>
             </Link>
           )}

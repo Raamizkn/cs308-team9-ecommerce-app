@@ -23,9 +23,54 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    fetchUserData()
-    fetchWishlist()
+    checkRoleAndRedirect()
   }, [])
+
+  const checkRoleAndRedirect = async () => {
+    try {
+      const supabase = getSupabaseBrowserClient()
+      const {
+        data: { user: authUser },
+      } = await supabase.auth.getUser()
+
+      if (!authUser) {
+        router.push("/login")
+        return
+      }
+
+      // Check if user is a support agent, sales manager, or product manager
+      const [supportAgent, salesManager, productManager] = await Promise.all([
+        supabase.from("support_agents").select("uid").eq("uid", authUser.id).maybeSingle(),
+        supabase.from("sales_managers").select("uid").eq("uid", authUser.id).maybeSingle(),
+        supabase.from("product_managers").select("uid").eq("uid", authUser.id).maybeSingle(),
+      ])
+
+      if (supportAgent.data) {
+        // Support agents should go to chat interface
+        router.push("/admin/chat")
+        return
+      }
+
+      if (salesManager.data) {
+        // Sales managers should go to their dashboard
+        router.push("/sales-manager/dashboard")
+        return
+      }
+
+      if (productManager.data) {
+        // Product managers should go to their dashboard
+        router.push("/product-manager")
+        return
+      }
+
+      // If user is a regular customer, proceed with profile page
+      fetchUserData()
+      fetchWishlist()
+    } catch (error) {
+      console.error("[Group9] Error checking role:", error)
+      router.push("/")
+    }
+  }
 
   const fetchUserData = async () => {
     try {

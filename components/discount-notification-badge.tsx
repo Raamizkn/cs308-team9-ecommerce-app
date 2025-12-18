@@ -171,7 +171,7 @@ export function DiscountNotificationBadge() {
                   onClick={() => !notification.is_read && markAsRead(notification.id)}
                 >
                   <Link
-                    href={`/catalog?product=${notification.product_id}`}
+                    href={`/?product=${notification.product_id}`}
                     className="block"
                   >
                     <div className="flex gap-3">

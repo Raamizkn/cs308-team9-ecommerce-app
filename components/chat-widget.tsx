@@ -22,7 +22,26 @@ export function ChatWidget({ initialOpen = false }: { initialOpen?: boolean }) {
 
   useEffect(() => {
     checkAuth()
+    checkIfSupportAgent()
   }, [])
+
+  const [isSupportAgent, setIsSupportAgent] = useState(false)
+
+  const checkIfSupportAgent = async () => {
+    const supabase = getSupabaseBrowserClient()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    
+    if (user?.id) {
+      const { data } = await supabase
+        .from("support_agents")
+        .select("uid")
+        .eq("uid", user.id)
+        .maybeSingle()
+      setIsSupportAgent(!!data)
+    }
+  }
 
   useEffect(() => {
     if (initialOpen) setIsOpen(true)
@@ -187,6 +206,11 @@ export function ChatWidget({ initialOpen = false }: { initialOpen?: boolean }) {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }
 
+  // Don't show chat widget for support agents (they have their own interface)
+  if (isSupportAgent) {
+    return null
+  }
+
   // Show chat for both authenticated users and guests
   return (
     <>
@@ -236,20 +260,31 @@ export function ChatWidget({ initialOpen = false }: { initialOpen?: boolean }) {
                     <p className="text-sm text-[#1a1a3e] leading-relaxed">{msg.message}</p>
                     
                     {/* Attachments Display */}
-                    {msg.attachments && msg.attachments.length > 0 && (
-                      <div className="mt-2 space-y-1">
-                        {msg.attachments.map((file: any, idx: number) => (
-                          <div
-                            key={idx}
-                            className="flex items-center gap-2 p-2 bg-white/50 border border-black text-xs"
-                          >
-                            {getFileIcon(file.type)}
-                            <span className="truncate flex-1">{file.name}</span>
-                            <span className="text-[#6c757d]">{(file.size / 1024).toFixed(1)}KB</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                    {(() => {
+                      let attachmentsArray = msg.attachments
+                      // Handle JSONB - might be string or already parsed
+                      if (typeof attachmentsArray === 'string') {
+                        try {
+                          attachmentsArray = JSON.parse(attachmentsArray)
+                        } catch (e) {
+                          attachmentsArray = null
+                        }
+                      }
+                      return attachmentsArray && Array.isArray(attachmentsArray) && attachmentsArray.length > 0 ? (
+                        <div className="mt-2 space-y-1">
+                          {attachmentsArray.map((file: any, idx: number) => (
+                            <div
+                              key={idx}
+                              className="flex items-center gap-2 p-2 bg-white/50 border border-black text-xs"
+                            >
+                              {getFileIcon(file.type)}
+                              <span className="truncate flex-1">{file.name}</span>
+                              <span className="text-[#6c757d]">{file.size ? (file.size / 1024).toFixed(1) + 'KB' : ''}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null
+                    })()}
 
                     <p className="text-xs text-[#6c757d] mt-1">
                       {new Date(msg.created_at).toLocaleTimeString("en-US", {
