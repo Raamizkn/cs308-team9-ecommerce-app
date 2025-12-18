@@ -15,6 +15,7 @@ export default function AdminChatPage() {
   const router = useRouter()
   const [conversations, setConversations] = useState<any[]>([])
   const [selectedUser, setSelectedUser] = useState<string | null>(null)
+  const [selectedConversation, setSelectedConversation] = useState<any>(null)
   const [messages, setMessages] = useState<any[]>([])
   const [newMessage, setNewMessage] = useState("")
   const [loading, setLoading] = useState(false)
@@ -22,6 +23,8 @@ export default function AdminChatPage() {
   const [uploading, setUploading] = useState(false)
   const [customerContext, setCustomerContext] = useState<any>(null)
   const [loadingContext, setLoadingContext] = useState(false)
+  const [currentAgentId, setCurrentAgentId] = useState<string | null>(null)
+  const [filter, setFilter] = useState<"all" | "unclaimed" | "claimed" | "my_claims">("all")
   const fileInputRef = useRef<HTMLInputElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
@@ -57,10 +60,20 @@ export default function AdminChatPage() {
   }
 
   useEffect(() => {
+    // Get current agent ID
+    const getCurrentAgentId = async () => {
+      const supabase = getSupabaseBrowserClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        setCurrentAgentId(user.id)
+      }
+    }
+    getCurrentAgentId()
+    
     fetchConversations()
     const interval = setInterval(fetchConversations, 5000)
     return () => clearInterval(interval)
-  }, [])
+  }, [filter])
 
   useEffect(() => {
     if (selectedUser) {
@@ -72,72 +85,110 @@ export default function AdminChatPage() {
   }, [selectedUser])
 
   useEffect(() => {
+    // Update selectedConversation when selectedUser changes
+    if (selectedUser) {
+      const conv = conversations.find((c: any) => c.user_id === selectedUser)
+      setSelectedConversation(conv || null)
+    } else {
+      setSelectedConversation(null)
+    }
+  }, [selectedUser, conversations])
+
+  useEffect(() => {
     scrollToBottom()
   }, [messages])
 
   const fetchConversations = async () => {
     try {
-      const supabase = getSupabaseBrowserClient()
-      // Get all unique user_ids from chat messages
-      const { data: messages, error } = await supabase
-        .from("chat_messages")
-        .select("user_id, created_at")
-        .order("created_at", { ascending: false })
-
-      if (error) {
-        console.error("[Group9] Error fetching conversations:", error)
-        return
+      // Use the new API endpoint that includes claim status
+      const response = await fetch(`/api/admin/chat/conversations?filter=${filter}`)
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: "Failed to fetch conversations" }))
+        throw new Error(errorData.error || "Failed to fetch conversations")
       }
-
-      // Get unique user_ids
-      const uniqueUserIds: string[] = Array.from(new Set(messages?.map((m: any) => m.user_id as string) || [])) as string[]
-
-      // Fetch user info for each unique user_id
-      const conversationsWithInfo = await Promise.all(
-        uniqueUserIds.map(async (userId: string) => {
-          // Check if it's a UUID (logged-in user) or guest
-          if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) {
-            const { data: profile } = await supabase
-              .from("profiles")
-              .select("name, uid")
-              .eq("uid", userId)
-              .maybeSingle()
-
-            // Fetch email from API
-            let userEmail = null
-            try {
-              const response = await fetch(`/api/admin/user-email?user_id=${userId}`)
-              if (response.ok) {
-                const data = await response.json()
-                userEmail = data.email
-              }
-            } catch (error) {
-              console.error("[Group9] Error fetching email for conversation:", error)
-            }
-
-            return {
-              user_id: userId,
-              users: {
-                name: profile?.name || "User",
-                email: userEmail,
-              },
-            }
-          } else {
-            // Guest user
-            return {
-              user_id: userId,
-              users: {
-                name: "Guest User",
-                email: null,
-              },
-            }
-          }
-        })
-      )
-
-      setConversations(conversationsWithInfo)
+      const data = await response.json()
+      setConversations(data.conversations || [])
     } catch (error) {
       console.error("[Group9] Error fetching conversations:", error)
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to load conversations",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleClaim = async (userId: string) => {
+    try {
+      const response = await fetch("/api/admin/chat/claim", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ user_id: userId }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || "Failed to claim conversation")
+      }
+
+      toast({
+        title: "Success",
+        description: "Conversation claimed successfully",
+      })
+
+      // Refresh conversations
+      fetchConversations()
+
+      // If this was the selected user, refresh to show updated claim status
+      if (selectedUser === userId) {
+        fetchConversations()
+      }
+    } catch (error) {
+      console.error("[Group9] Error claiming conversation:", error)
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to claim conversation",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleUnclaim = async (userId: string) => {
+    try {
+      const response = await fetch("/api/admin/chat/unclaim", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ user_id: userId }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || "Failed to unclaim conversation")
+      }
+
+      toast({
+        title: "Success",
+        description: "Conversation released successfully",
+      })
+
+      // Refresh conversations
+      fetchConversations()
+
+      // If this was the selected user, refresh to show updated claim status
+      if (selectedUser === userId) {
+        fetchConversations()
+      }
+    } catch (error) {
+      console.error("[Group9] Error unclaiming conversation:", error)
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to release conversation",
+        variant: "destructive",
+      })
     }
   }
 
@@ -298,6 +349,22 @@ export default function AdminChatPage() {
   const sendMessage = async () => {
     if ((!newMessage.trim() && attachments.length === 0) || !selectedUser) return
 
+    // Check if conversation is claimed by current agent or unclaimed
+    const conv = conversations.find((c: any) => c.user_id === selectedUser)
+    if (conv?.claimed_by && conv.claimed_by !== currentAgentId) {
+      toast({
+        title: "Cannot send message",
+        description: "This conversation is claimed by another agent. Please claim it first or select a different conversation.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    // Auto-claim if unclaimed
+    if (conv && !conv.claimed_by) {
+      await handleClaim(selectedUser)
+    }
+
     setLoading(true)
     try {
       const uploadedFiles = await uploadFiles()
@@ -348,8 +415,6 @@ export default function AdminChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }
 
-  const selectedConversation = conversations.find((c) => c.user_id === selectedUser)
-
   return (
     <div className="min-h-screen bg-[#f8f9fa]">
       <PixelHeader />
@@ -357,8 +422,10 @@ export default function AdminChatPage() {
       <main className="container mx-auto px-4 py-12">
         <div className="mb-8 flex items-center justify-between">
           <div>
-          <h1 className="font-[family-name:var(--font-pixel)] text-4xl text-[#1a1a3e] mb-2">LIVE CHAT</h1>
-          <p className="text-[#6c757d] font-semibold">{conversations.length} active conversations</p>
+            <h1 className="font-[family-name:var(--font-pixel)] text-4xl text-[#1a1a3e] mb-2">LIVE CHAT</h1>
+            <p className="text-[#6c757d] font-semibold">
+              {conversations.filter((c: any) => !c.claimed_by).length} unclaimed • {conversations.filter((c: any) => c.claimed_by === currentAgentId).length} my claims • {conversations.length} total
+            </p>
           </div>
           <Button
             onClick={handleLogout}
@@ -369,38 +436,122 @@ export default function AdminChatPage() {
           </Button>
         </div>
 
+        {/* Filter Tabs */}
+        <div className="mb-4 flex gap-2">
+          <Button
+            onClick={() => setFilter("all")}
+            className={`border-4 border-black font-bold ${
+              filter === "all" ? "bg-[#4ecdc4] text-[#1a1a3e]" : "bg-white text-[#1a1a3e]"
+            }`}
+          >
+            ALL
+          </Button>
+          <Button
+            onClick={() => setFilter("unclaimed")}
+            className={`border-4 border-black font-bold ${
+              filter === "unclaimed" ? "bg-[#ffb347] text-[#1a1a3e]" : "bg-white text-[#1a1a3e]"
+            }`}
+          >
+            QUEUE ({conversations.filter((c: any) => !c.claimed_by).length})
+          </Button>
+          <Button
+            onClick={() => setFilter("my_claims")}
+            className={`border-4 border-black font-bold ${
+              filter === "my_claims" ? "bg-[#6bcf7f] text-[#1a1a3e]" : "bg-white text-[#1a1a3e]"
+            }`}
+          >
+            MY CLAIMS ({conversations.filter((c: any) => c.claimed_by === currentAgentId).length})
+          </Button>
+        </div>
+
         <div className="grid lg:grid-cols-12 gap-6">
           {/* Conversations List */}
           <div className="lg:col-span-3">
             <div className="bg-white border-4 border-black pixel-shadow-sm">
               <div className="bg-[#5b3a8f] border-b-4 border-black p-4">
-                <h2 className="font-bold text-white">CONVERSATIONS</h2>
+                <h2 className="font-bold text-white">
+                  {filter === "unclaimed" ? "QUEUE" : filter === "my_claims" ? "MY CLAIMS" : "CONVERSATIONS"}
+                </h2>
               </div>
-              <div className="divide-y-4 divide-[#e9ecef]">
+              <div className="divide-y-4 divide-[#e9ecef] max-h-[600px] overflow-y-auto">
                 {conversations.length === 0 ? (
                   <div className="p-8 text-center">
-                    <p className="text-[#6c757d] font-semibold">No conversations yet</p>
+                    <p className="text-[#6c757d] font-semibold">
+                      {filter === "unclaimed" ? "No unclaimed conversations" : 
+                       filter === "my_claims" ? "You haven't claimed any conversations" : 
+                       "No conversations yet"}
+                    </p>
                   </div>
                 ) : (
-                  conversations.map((conv) => (
-                    <button
-                      key={conv.user_id}
-                      onClick={() => setSelectedUser(conv.user_id)}
-                      className={`w-full p-4 text-left hover:bg-[#f8f9fa] transition-colors ${
-                        selectedUser === conv.user_id ? "bg-[#4ecdc4]" : ""
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-[#5b3a8f] border-2 border-black flex items-center justify-center flex-shrink-0">
-                          <User className="h-5 w-5 text-white" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-bold text-[#1a1a3e] truncate">{conv.users?.name || "User"}</p>
-                          <p className="text-xs text-[#6c757d] truncate">{conv.users?.email}</p>
+                  conversations.map((conv: any) => {
+                    const isClaimed = !!conv.claimed_by
+                    const isMyClaim = conv.claimed_by === currentAgentId
+                    const isSelected = selectedUser === conv.user_id
+
+                    return (
+                      <div
+                        key={conv.user_id}
+                        className={`w-full border-b-4 border-[#e9ecef] last:border-b-0 ${
+                          isSelected ? "bg-[#4ecdc4]" : "bg-white"
+                        }`}
+                      >
+                        <button
+                          onClick={() => setSelectedUser(conv.user_id)}
+                          className={`w-full p-4 text-left hover:bg-[#f8f9fa] transition-colors ${
+                            isSelected ? "bg-[#4ecdc4]" : ""
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className={`w-10 h-10 border-2 border-black flex items-center justify-center flex-shrink-0 ${
+                              isClaimed ? (isMyClaim ? "bg-[#6bcf7f]" : "bg-[#ffb347]") : "bg-[#5b3a8f]"
+                            }`}>
+                              <User className={`h-5 w-5 ${isClaimed ? "text-[#1a1a3e]" : "text-white"}`} />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="font-bold text-[#1a1a3e] truncate">{conv.users?.name || "User"}</p>
+                              <p className="text-xs text-[#6c757d] truncate">{conv.users?.email || "No email"}</p>
+                              {isClaimed && (
+                                <p className="text-xs mt-1">
+                                  {isMyClaim ? (
+                                    <span className="text-[#6bcf7f] font-semibold">✓ Claimed by you</span>
+                                  ) : (
+                                    <span className="text-[#ffb347] font-semibold">Claimed by {conv.agent?.name || "another agent"}</span>
+                                  )}
+                                </p>
+                              )}
+                              {!isClaimed && (
+                                <p className="text-xs mt-1 text-[#dc3545] font-semibold">⚠ Unclaimed</p>
+                              )}
+                            </div>
+                          </div>
+                        </button>
+                        {/* Claim/Unclaim Button */}
+                        <div className="px-4 pb-3">
+                          {!isClaimed ? (
+                            <Button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleClaim(conv.user_id)
+                              }}
+                              className="w-full bg-[#ffb347] hover:bg-[#ffd93d] text-black border-2 border-black font-bold text-xs py-1"
+                            >
+                              CLAIM
+                            </Button>
+                          ) : isMyClaim ? (
+                            <Button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleUnclaim(conv.user_id)
+                              }}
+                              className="w-full bg-[#dc3545] hover:bg-[#c82333] text-white border-2 border-black font-bold text-xs py-1"
+                            >
+                              RELEASE
+                            </Button>
+                          ) : null}
                         </div>
                       </div>
-                    </button>
-                  ))
+                    )
+                  })
                 )}
               </div>
             </div>
