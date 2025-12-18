@@ -1,26 +1,19 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useState, useEffect } from "react"
 import { PixelHeader } from "@/components/pixel-header"
 import { ProductCard } from "@/components/product-card"
 import { CategoryFilter } from "@/components/category-filter"
 import { SearchBar } from "@/components/search-bar"
-import { Button } from "@/components/ui/button"
-import { ArrowUpDown } from "lucide-react"
-
-interface Product {
-  pid: number
-  id: string // Added during transformation
-  name: string
-  description: string | null
-  price: number
-  image_url?: string
-  rating: number
-  review_count: number
-  is_limited_edition: boolean
-  stock_quantity: number
-  stock: number // Added during transformation
-}
+import { useProducts } from "@/hooks/useProducts"
+import { useWishlist } from "@/hooks/useWishlist"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 
 interface Category {
   cid: number
@@ -28,20 +21,59 @@ interface Category {
 }
 
 export default function HomePage() {
-  const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [sortBy, setSortBy] = useState("created_at")
-  const [loading, setLoading] = useState(true)
+  const [loadingCategories, setLoadingCategories] = useState(true)
+  const [userId, setUserId] = useState<string | null>(null)
+  const [isLoadingUser, setIsLoadingUser] = useState(true)
 
+  // Fetch products using SWR hook
+  const { products, isLoading: loadingProducts } = useProducts({
+    category: selectedCategory || undefined,
+    search: searchQuery || undefined,
+    sort: sortBy,
+  })
+
+  // Preload all wishlist IDs at once for instant heart rendering
+  const { wishlistProductIds, mutate: mutateWishlist } = useWishlist(userId)
+
+  const loading = loadingProducts || loadingCategories
+
+  // Check user authentication on mount - use cached session for speed
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const { getSupabaseBrowserClient } = await import("@/lib/supabase/client")
+        const supabase = getSupabaseBrowserClient()
+        
+        // Try to get cached session first (fast)
+        const { data: { session } } = await supabase.auth.getSession()
+        if (session?.user?.id) {
+          setUserId(session.user.id)
+          setIsLoadingUser(false)
+          return
+        }
+
+        // Fallback to getUser if no session cached
+        const { data: { user } } = await supabase.auth.getUser()
+        setUserId(user?.id || null)
+      } catch (error) {
+        console.error("[Group9] Error checking auth:", error)
+        setUserId(null)
+      } finally {
+        setIsLoadingUser(false)
+      }
+    }
+
+    checkAuth()
+  }, [])
+
+  // Fetch categories on mount
   useEffect(() => {
     fetchCategories()
   }, [])
-
-  useEffect(() => {
-    fetchProducts()
-  }, [selectedCategory, searchQuery, sortBy])
 
   const fetchCategories = async () => {
     try {
@@ -50,50 +82,19 @@ export default function HomePage() {
       setCategories(data.categories || [])
     } catch (error) {
       console.error("[Group9] Error fetching categories:", error)
-    }
-  }
-
-  const fetchProducts = async () => {
-    setLoading(true)
-    try {
-      const params = new URLSearchParams()
-      if (selectedCategory) params.append("category", selectedCategory)
-      if (searchQuery) params.append("search", searchQuery)
-      if (sortBy) params.append("sort", sortBy)
-
-      const response = await fetch(`/api/products?${params}`)
-      const data = await response.json()
-      // Transform products to match component expectations
-      const transformedProducts = (data.products || []).map((product: any) => ({
-        ...product,
-        id: String(product.pid), // Convert pid to string for key prop
-        image_url: product.image_url || "/placeholder.svg",
-        rating: product.rating || 0,
-        review_count: product.review_count || 0,
-        is_limited_edition: product.is_limited_edition || false,
-        stock: product.stock_quantity || 0,
-      }))
-      setProducts(transformedProducts)
-    } catch (error) {
-      console.error("[Group9] Error fetching products:", error)
     } finally {
-      setLoading(false)
+      setLoadingCategories(false)
     }
   }
 
-  const cycleSortBy = () => {
-    const sortOptions = ["created_at", "price_asc", "price_desc", "rating"]
-    const currentIndex = sortOptions.indexOf(sortBy)
-    const nextIndex = (currentIndex + 1) % sortOptions.length
-    setSortBy(sortOptions[nextIndex])
-  }
-
-  const getSortLabel = () => {
-    switch (sortBy) {
+  const getSortLabel = (value: string) => {
+    switch (value) {
       case "price_asc":
         return "PRICE: LOW TO HIGH"
       case "price_desc":
         return "PRICE: HIGH TO LOW"
+      case "popularity":
+        return "MOST POPULAR"
       case "rating":
         return "HIGHEST RATED"
       default:
@@ -137,13 +138,30 @@ export default function HomePage() {
             <p className="text-sm text-[#6c757d] font-semibold">
               {loading ? "Loading..." : `${products.length} products found`}
             </p>
-            <Button
-              onClick={cycleSortBy}
-              className="bg-white border-4 border-black text-black hover:bg-[#e9ecef] font-bold"
-            >
-              <ArrowUpDown className="h-4 w-4 mr-2" />
-              {getSortLabel()}
-            </Button>
+            <Select value={sortBy} onValueChange={setSortBy}>
+              <SelectTrigger className="w-full sm:w-[250px] bg-white border-4 border-black font-bold text-black hover:bg-[#e9ecef] transition-colors">
+                <SelectValue>
+                  {getSortLabel(sortBy)}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent className="bg-white border-4 border-black">
+                <SelectItem value="created_at" className="font-bold cursor-pointer hover:bg-[#ffb347] focus:bg-[#ffb347]">
+                  NEWEST FIRST
+                </SelectItem>
+                <SelectItem value="price_asc" className="font-bold cursor-pointer hover:bg-[#ffb347] focus:bg-[#ffb347]">
+                  PRICE: LOW TO HIGH
+                </SelectItem>
+                <SelectItem value="price_desc" className="font-bold cursor-pointer hover:bg-[#ffb347] focus:bg-[#ffb347]">
+                  PRICE: HIGH TO LOW
+                </SelectItem>
+                <SelectItem value="popularity" className="font-bold cursor-pointer hover:bg-[#ffb347] focus:bg-[#ffb347]">
+                  MOST POPULAR
+                </SelectItem>
+                <SelectItem value="rating" className="font-bold cursor-pointer hover:bg-[#ffb347] focus:bg-[#ffb347]">
+                  HIGHEST RATED
+                </SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
 
@@ -159,7 +177,14 @@ export default function HomePage() {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             {products.map((product) => (
-              <ProductCard key={product.id} {...product} />
+              <ProductCard
+                key={product.id}
+                {...product}
+                description={product.description || ""}
+                image_url={product.image_url || "/placeholder.svg"}
+                preloadedWishlistIds={wishlistProductIds}
+                onWishlistMutate={mutateWishlist}
+              />
             ))}
           </div>
         )}

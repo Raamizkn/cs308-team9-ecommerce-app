@@ -38,21 +38,26 @@ function OrderConfirmationContent() {
             </div>
 
             <div className="bg-[#4ecdc4] border-4 border-black p-6 mb-8">
-              <p className="text-[#1a1a3e] font-semibold leading-relaxed">
+              <p className="text-[#1a1a3e] font-semibold leading-relaxed mb-3">
                 Your order has been successfully placed! You will receive a confirmation email shortly with your order
-                details and tracking information.
+                details, tracking information, and a PDF invoice.
+              </p>
+              <p className="text-sm text-[#1a1a3e] font-semibold">
+                📧 Check your email for the invoice PDF
               </p>
             </div>
 
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
+              {orderId && (
+                <Link href={`/orders/${orderId}`}>
+                  <Button className="bg-[#5b3a8f] hover:bg-[#3d2660] text-white border-4 border-black font-bold text-lg px-8 py-6">
+                    VIEW ORDER & DOWNLOAD INVOICE
+                  </Button>
+                </Link>
+              )}
               <Link href="/">
                 <Button className="bg-[#ffb347] hover:bg-[#ffd93d] text-black border-4 border-black font-bold text-lg px-8 py-6">
                   CONTINUE SHOPPING
-                </Button>
-              </Link>
-              <Link href="/orders">
-                <Button className="bg-[#5b3a8f] hover:bg-[#3d2660] text-white border-4 border-black font-bold text-lg px-8 py-6">
-                  VIEW ORDERS
                 </Button>
               </Link>
             </div>

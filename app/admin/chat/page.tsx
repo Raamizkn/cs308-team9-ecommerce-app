@@ -6,7 +6,7 @@ import { PixelHeader } from "@/components/pixel-header"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { getSupabaseBrowserClient } from "@/lib/supabase/client"
-import { ArrowLeft, Send, User } from "lucide-react"
+import { ArrowLeft, Send, User, Paperclip, Image, FileText, X as XIcon, ShoppingCart, Heart, Package } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
 export default function AdminChatPage() {
@@ -16,6 +16,11 @@ export default function AdminChatPage() {
   const [messages, setMessages] = useState<any[]>([])
   const [newMessage, setNewMessage] = useState("")
   const [loading, setLoading] = useState(false)
+  const [attachments, setAttachments] = useState<File[]>([])
+  const [uploading, setUploading] = useState(false)
+  const [customerContext, setCustomerContext] = useState<any>(null)
+  const [loadingContext, setLoadingContext] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -27,6 +32,7 @@ export default function AdminChatPage() {
   useEffect(() => {
     if (selectedUser) {
       fetchMessages()
+      fetchCustomerContext()
       const interval = setInterval(fetchMessages, 3000)
       return () => clearInterval(interval)
     }
@@ -64,18 +70,132 @@ export default function AdminChatPage() {
     }
   }
 
+  const fetchCustomerContext = async () => {
+    if (!selectedUser || selectedUser.startsWith('guest_')) {
+      setCustomerContext({ isGuest: true })
+      return
+    }
+
+    setLoadingContext(true)
+    try {
+      const supabase = getSupabaseBrowserClient()
+
+      // Fetch customer profile
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", selectedUser)
+        .single()
+
+      // Fetch recent orders
+      const { data: orders } = await supabase
+        .from("orders")
+        .select("id, created_at, status, total_amount")
+        .eq("user_id", selectedUser)
+        .order("created_at", { ascending: false })
+        .limit(5)
+
+      // Fetch cart items
+      const { data: cartItems } = await supabase
+        .from("contains_item")
+        .select(`
+          quantity,
+          products (
+            name,
+            price,
+            image_url
+          )
+        `)
+        .eq("user_id", selectedUser)
+
+      // Fetch wishlist
+      const { data: wishlist } = await supabase
+        .from("wish_for")
+        .select(`
+          products (
+            name,
+            price,
+            image_url
+          )
+        `)
+        .eq("user_id", selectedUser)
+
+      setCustomerContext({
+        isGuest: false,
+        profile,
+        orders: orders || [],
+        cart: cartItems || [],
+        wishlist: wishlist || [],
+      })
+    } catch (error) {
+      console.error("[Group9] Error fetching customer context:", error)
+      setCustomerContext({ isGuest: false, error: true })
+    } finally {
+      setLoadingContext(false)
+    }
+  }
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || [])
+    const validFiles = files.filter((file) => {
+      if (file.size > 10 * 1024 * 1024) {
+        toast({
+          title: "File too large",
+          description: `${file.name} is larger than 10MB`,
+          variant: "destructive",
+        })
+        return false
+      }
+      return true
+    })
+    setAttachments([...attachments, ...validFiles])
+  }
+
+  const removeAttachment = (index: number) => {
+    setAttachments(attachments.filter((_, i) => i !== index))
+  }
+
+  const uploadFiles = async () => {
+    if (attachments.length === 0) return []
+
+    setUploading(true)
+    try {
+      // TODO: Connect to Supabase Storage
+      // For now, return mock URLs
+      return attachments.map((file) => ({
+        name: file.name,
+        type: file.type,
+        size: file.size,
+        url: `mock://uploads/${file.name}`,
+      }))
+    } catch (error) {
+      console.error("[Group9] Error uploading files:", error)
+      toast({
+        title: "Upload failed",
+        description: "Failed to upload files",
+        variant: "destructive",
+      })
+      return []
+    } finally {
+      setUploading(false)
+    }
+  }
+
   const sendMessage = async () => {
-    if (!newMessage.trim() || !selectedUser) return
+    if ((!newMessage.trim() && attachments.length === 0) || !selectedUser) return
 
     setLoading(true)
     try {
+      const uploadedFiles = await uploadFiles()
+
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           user_id: selectedUser,
-          message: newMessage,
+          message: newMessage.trim() || "(Attachment)",
           is_support: true,
+          attachments: uploadedFiles.length > 0 ? uploadedFiles : undefined,
         }),
       })
 
@@ -91,6 +211,7 @@ export default function AdminChatPage() {
       }
 
       setNewMessage("")
+      setAttachments([])
       fetchMessages()
     } catch (error) {
       console.error("[Group9] Error sending message:", error)
@@ -102,6 +223,11 @@ export default function AdminChatPage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const getFileIcon = (type: string) => {
+    if (type.startsWith("image/")) return <Image className="h-4 w-4" />
+    return <FileText className="h-4 w-4" />
   }
 
   const scrollToBottom = () => {
@@ -126,9 +252,9 @@ export default function AdminChatPage() {
           <p className="text-[#6c757d] font-semibold">{conversations.length} active conversations</p>
         </div>
 
-        <div className="grid lg:grid-cols-3 gap-6">
+        <div className="grid lg:grid-cols-12 gap-6">
           {/* Conversations List */}
-          <div className="lg:col-span-1">
+          <div className="lg:col-span-3">
             <div className="bg-white border-4 border-black pixel-shadow-sm">
               <div className="bg-[#5b3a8f] border-b-4 border-black p-4">
                 <h2 className="font-bold text-white">CONVERSATIONS</h2>
@@ -164,7 +290,7 @@ export default function AdminChatPage() {
           </div>
 
           {/* Chat Window */}
-          <div className="lg:col-span-2">
+          <div className="lg:col-span-5">
             <div className="bg-white border-4 border-black pixel-shadow-sm h-[600px] flex flex-col">
               {/* Header */}
               <div className="bg-[#5b3a8f] border-b-4 border-black p-4">
@@ -205,6 +331,23 @@ export default function AdminChatPage() {
                           <p className="text-xs font-bold text-[#5b3a8f] mb-1">{msg.users?.name || "User"}</p>
                         )}
                         <p className="text-sm text-[#1a1a3e] leading-relaxed">{msg.message}</p>
+                        
+                        {/* Attachments Display */}
+                        {msg.attachments && msg.attachments.length > 0 && (
+                          <div className="mt-2 space-y-1">
+                            {msg.attachments.map((file: any, idx: number) => (
+                              <div
+                                key={idx}
+                                className="flex items-center gap-2 p-2 bg-white/50 border border-black text-xs"
+                              >
+                                {getFileIcon(file.type)}
+                                <span className="truncate flex-1">{file.name}</span>
+                                <span className="text-[#6c757d]">{(file.size / 1024).toFixed(1)}KB</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
                         <p className="text-xs text-[#6c757d] mt-1">
                           {new Date(msg.created_at).toLocaleTimeString("en-US", {
                             hour: "2-digit",
@@ -220,29 +363,189 @@ export default function AdminChatPage() {
 
               {/* Input */}
               {selectedUser && (
-                <div className="border-t-4 border-black p-4 bg-white">
+                <div className="border-t-4 border-black p-4 bg-white space-y-2">
+                  {/* Attachments Preview */}
+                  {attachments.length > 0 && (
+                    <div className="space-y-1">
+                      {attachments.map((file, idx) => (
+                        <div key={idx} className="flex items-center gap-2 p-2 bg-[#f8f9fa] border-2 border-black text-xs">
+                          {getFileIcon(file.type)}
+                          <span className="truncate flex-1">{file.name}</span>
+                          <span className="text-[#6c757d]">{(file.size / 1024).toFixed(1)}KB</span>
+                          <button
+                            onClick={() => removeAttachment(idx)}
+                            className="text-[#dc3545] hover:text-[#c82333]"
+                          >
+                            <XIcon className="h-3 w-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
                   <div className="flex gap-2">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      multiple
+                      accept="image/*,.pdf,.doc,.docx,.txt"
+                      onChange={handleFileSelect}
+                      className="hidden"
+                    />
+                    <Button
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={loading || uploading}
+                      className="bg-white hover:bg-[#e9ecef] text-black border-4 border-black font-bold flex-shrink-0"
+                      title="Attach files (images, PDFs, documents)"
+                    >
+                      <Paperclip className="h-4 w-4" />
+                    </Button>
                     <Input
                       type="text"
                       placeholder="Type your message..."
                       value={newMessage}
                       onChange={(e) => setNewMessage(e.target.value)}
-                      onKeyPress={(e) => e.key === "Enter" && sendMessage()}
+                      onKeyPress={(e) => e.key === "Enter" && !e.shiftKey && sendMessage()}
                       className="border-4 border-black"
-                      disabled={loading}
+                      disabled={loading || uploading}
                     />
                     <Button
                       onClick={sendMessage}
-                      disabled={loading || !newMessage.trim()}
-                      className="bg-[#ffb347] hover:bg-[#ffd93d] text-black border-4 border-black font-bold"
+                      disabled={loading || uploading || (!newMessage.trim() && attachments.length === 0)}
+                      className="bg-[#ffb347] hover:bg-[#ffd93d] text-black border-4 border-black font-bold flex-shrink-0"
                     >
-                      <Send className="h-4 w-4" />
+                      {uploading ? "..." : <Send className="h-4 w-4" />}
                     </Button>
                   </div>
+                  <p className="text-xs text-[#6c757d] px-1">
+                    Attach images, PDFs, or documents (max 10MB each)
+                  </p>
                 </div>
               )}
             </div>
           </div>
+
+          {/* Customer Context Sidebar */}
+          {selectedUser && (
+            <div className="lg:col-span-4">
+              <div className="bg-white border-4 border-black pixel-shadow-sm sticky top-4">
+                <div className="bg-[#4ecdc4] border-b-4 border-black p-4">
+                  <h2 className="font-bold text-[#1a1a3e]">CUSTOMER INFO</h2>
+                </div>
+                
+                {loadingContext ? (
+                  <div className="p-8 text-center">
+                    <div className="inline-block w-8 h-8 border-4 border-black border-t-[#ffb347] rounded-full animate-spin" />
+                  </div>
+                ) : customerContext?.isGuest ? (
+                  <div className="p-4 space-y-4">
+                    <div className="bg-[#fff3cd] border-2 border-black p-4">
+                      <p className="text-sm font-semibold text-[#856404]">👤 Guest User</p>
+                      <p className="text-xs text-[#856404] mt-1">Not logged in - limited information available</p>
+                    </div>
+                  </div>
+                ) : customerContext?.error ? (
+                  <div className="p-4">
+                    <div className="bg-[#f8d7da] border-2 border-black p-4">
+                      <p className="text-sm font-semibold text-[#721c24]">Error loading customer data</p>
+                    </div>
+                  </div>
+                ) : customerContext ? (
+                  <div className="p-4 space-y-4 max-h-[calc(100vh-200px)] overflow-y-auto">
+                    {/* Profile */}
+                    {customerContext.profile && (
+                      <div className="border-2 border-black p-3 bg-[#f8f9fa]">
+                        <h3 className="font-bold text-[#1a1a3e] text-sm mb-2">📋 PROFILE</h3>
+                        <div className="space-y-1 text-xs">
+                          <p><span className="font-semibold">Name:</span> {customerContext.profile.name}</p>
+                          <p><span className="font-semibold">Email:</span> {customerContext.profile.email}</p>
+                          {customerContext.profile.home_address && (
+                            <p><span className="font-semibold">Address:</span> {customerContext.profile.home_address}</p>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Recent Orders */}
+                    <div className="border-2 border-black p-3 bg-[#f8f9fa]">
+                      <h3 className="font-bold text-[#1a1a3e] text-sm mb-2 flex items-center gap-2">
+                        <Package className="h-4 w-4" />
+                        RECENT ORDERS ({customerContext.orders?.length || 0})
+                      </h3>
+                      {customerContext.orders?.length > 0 ? (
+                        <div className="space-y-2">
+                          {customerContext.orders.map((order: any) => (
+                            <div key={order.id} className="bg-white border border-black p-2 text-xs">
+                              <p className="font-semibold">#{order.id.slice(0, 8)}</p>
+                              <p className="text-[#6c757d]">
+                                <span className={`px-2 py-0.5 border border-black ${
+                                  order.status === 'delivered' ? 'bg-[#6bcf7f]' :
+                                  order.status === 'shipped' ? 'bg-[#4ecdc4]' :
+                                  order.status === 'processing' ? 'bg-[#ffb347]' : 'bg-[#dc3545] text-white'
+                                }`}>
+                                  {order.status}
+                                </span>
+                              </p>
+                              <p className="font-bold mt-1">${order.total_amount}</p>
+                              <p className="text-[#6c757d]">{new Date(order.created_at).toLocaleDateString()}</p>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-[#6c757d]">No orders yet</p>
+                      )}
+                    </div>
+
+                    {/* Cart Items */}
+                    <div className="border-2 border-black p-3 bg-[#f8f9fa]">
+                      <h3 className="font-bold text-[#1a1a3e] text-sm mb-2 flex items-center gap-2">
+                        <ShoppingCart className="h-4 w-4" />
+                        CART ({customerContext.cart?.length || 0})
+                      </h3>
+                      {customerContext.cart?.length > 0 ? (
+                        <div className="space-y-2">
+                          {customerContext.cart.map((item: any, idx: number) => (
+                            <div key={idx} className="bg-white border border-black p-2 text-xs flex gap-2">
+                              <div className="flex-1">
+                                <p className="font-semibold">{item.products?.name}</p>
+                                <p className="text-[#6c757d]">Qty: {item.quantity}</p>
+                                <p className="font-bold">${item.products?.price}</p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-[#6c757d]">Cart is empty</p>
+                      )}
+                    </div>
+
+                    {/* Wishlist */}
+                    <div className="border-2 border-black p-3 bg-[#f8f9fa]">
+                      <h3 className="font-bold text-[#1a1a3e] text-sm mb-2 flex items-center gap-2">
+                        <Heart className="h-4 w-4" />
+                        WISHLIST ({customerContext.wishlist?.length || 0})
+                      </h3>
+                      {customerContext.wishlist?.length > 0 ? (
+                        <div className="space-y-2">
+                          {customerContext.wishlist.slice(0, 5).map((item: any, idx: number) => (
+                            <div key={idx} className="bg-white border border-black p-2 text-xs">
+                              <p className="font-semibold truncate">{item.products?.name}</p>
+                              <p className="font-bold">${item.products?.price}</p>
+                            </div>
+                          ))}
+                          {customerContext.wishlist.length > 5 && (
+                            <p className="text-xs text-[#6c757d] text-center">+{customerContext.wishlist.length - 5} more</p>
+                          )}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-[#6c757d]">Wishlist is empty</p>
+                      )}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          )}
         </div>
       </main>
     </div>

@@ -10,6 +10,7 @@ import { getSupabaseBrowserClient } from "@/lib/supabase/client"
 import { useToast } from "@/hooks/use-toast"
 import { Heart, Package, LogOut, User } from "lucide-react"
 import Link from "next/link"
+import { mutate as globalMutate } from "swr"
 
 export default function ProfilePage() {
   const router = useRouter()
@@ -35,12 +36,29 @@ export default function ProfilePage() {
 
       if (authUser) {
         // Get profile from profiles table (not users table)
-        const { data } = await supabase.from("profiles").select("*").eq("uid", authUser.id).single()
+        const { data: profileData } = await supabase.from("profiles").select("*").eq("uid", authUser.id).single()
+
+        // Get customer data if user is already a customer
+        const { data: customerData } = await supabase
+          .from("customers")
+          .select("home_address, tax_id")
+          .eq("uid", authUser.id)
+          .maybeSingle()
+
         setUser({
           id: authUser.id,
           email: authUser.email,
-          name: data?.name || authUser.user_metadata?.name || "User",
+          name: (profileData as { name?: string | null } | null)?.name || authUser.user_metadata?.name || "User",
         })
+
+        // Set address and tax_id if customer data exists
+        if (customerData) {
+          const customer = customerData as { home_address?: string; tax_id?: string } | null
+          if (customer) {
+            setAddress(customer.home_address || "")
+            setTaxId(customer.tax_id || "")
+          }
+        }
       }
     } catch (error) {
       console.error("[Group9] Error fetching user:", error)
@@ -56,17 +74,126 @@ export default function ProfilePage() {
         data: { user },
       } = await supabase.auth.getUser()
 
-      if (user) {
-        const { data } = await supabase
-          .from("wishlist")
-          .select("*, products(*)")
-          .eq("user_id", user.id)
-          .order("created_at", { ascending: false })
-
-        setWishlist(data || [])
+      if (!user) {
+        setWishlist([])
+        return
       }
+
+      // Fetch wishlist items
+      let query = supabase.from("wish_for").select("*").eq("uid", user.id)
+
+      // Try to order by created_at if it exists, otherwise just fetch
+      const { data: wishlistItems, error: wishlistError } = await query
+
+      if (wishlistError) {
+        console.error("[Group9] Error fetching wishlist:", wishlistError)
+        console.error("[Group9] Wishlist error details:", JSON.stringify(wishlistError, null, 2))
+        setWishlist([])
+        return
+      }
+
+      console.log("[Group9] Fetched wishlist items:", wishlistItems)
+
+      if (!wishlistItems || wishlistItems.length === 0) {
+        console.log("[Group9] No wishlist items found for user:", user.id)
+        setWishlist([])
+        return
+      }
+
+      // Fetch products for each wishlist item
+      const productIds = wishlistItems
+        .map((item: any) => {
+          const pid = item.pid
+          // Ensure pid is a number
+          return typeof pid === "string" ? parseInt(pid) : pid
+        })
+        .filter((id: any) => id != null && !isNaN(id))
+
+      console.log("[Group9] Product IDs to fetch:", productIds)
+
+      if (productIds.length === 0) {
+        console.log("[Group9] No valid product IDs found")
+        setWishlist([])
+        return
+      }
+
+      // Fetch products with discount information
+      const { data: products, error: productsError } = await supabase
+        .from("products_belong_to")
+        .select(`
+          *,
+          applies_to (
+            did,
+            discount_campaigns (
+              did,
+              rate
+            )
+          )
+        `)
+        .in("pid", productIds)
+
+      if (productsError) {
+        console.error("[Group9] Error fetching products:", productsError)
+        setWishlist([])
+        return
+      }
+
+      console.log("[Group9] Fetched products with discounts:", products)
+
+      // Combine wishlist items with their products and apply image mapping
+      const wishlistWithProducts = wishlistItems.map((item: any) => {
+        const pid = typeof item.pid === "string" ? parseInt(item.pid) : item.pid
+        const product = products?.find((p: any) => p.pid === pid)
+
+        // Apply the same image mapping logic as in products API
+        let imageUrl = product?.image_url || "/placeholder.svg"
+        if (product) {
+          if (product.name === 'Time Turner Necklace') {
+            imageUrl = '/time-turner-necklace.png'
+          } else if (product.name === 'Drago Nova Transforming Bakugan') {
+            imageUrl = '/drago-nova-bakugan.png'
+          } else if (product.name === 'Elder Wand Replica') {
+            imageUrl = '/elder-wand-replica.png'
+          } else if (product.pid === 3) {
+            imageUrl = '/charizard.png'
+          } else if (product.pid === 4) {
+            imageUrl = '/pokemon.png'
+          } else if (product.pid === 5) {
+            imageUrl = '/skellige_card_set.png'
+          }
+        }
+
+        // Calculate discount if available
+        let discountRate = 0
+        if (product?.applies_to && product.applies_to.length > 0) {
+          // Get the highest discount rate if multiple discounts apply
+          for (const apply of product.applies_to) {
+            if (apply.discount_campaigns?.rate && apply.discount_campaigns.rate > discountRate) {
+              discountRate = apply.discount_campaigns.rate
+            }
+          }
+        }
+
+        const originalPrice = product?.price || 0
+        const discountedPrice = discountRate > 0 ? originalPrice * (1 - discountRate) : originalPrice
+
+        return {
+          ...item,
+          pid: pid,
+          products_belong_to: product ? {
+            ...product,
+            image_url: imageUrl,
+            discount_rate: discountRate,
+            discounted_price: discountedPrice,
+          } : null,
+        }
+      })
+
+      console.log("[Group9] Combined wishlist with products:", wishlistWithProducts)
+      setWishlist(wishlistWithProducts)
     } catch (error) {
       console.error("[Group9] Error fetching wishlist:", error)
+      setWishlist([])
     }
   }
 
@@ -95,14 +222,41 @@ export default function ProfilePage() {
       } = await supabase.auth.getUser()
 
       if (user) {
-        await supabase.from("wishlist").delete().eq("user_id", user.id).eq("product_id", productId)
+        const pidValue = parseInt(productId) || productId
 
-        setWishlist(wishlist.filter((item) => item.product_id !== productId))
+        // Delete from database
+        await supabase.from("wish_for").delete().eq("uid", user.id).eq("pid", pidValue)
+
+        // Update local state
+        setWishlist(wishlist.filter((item) => (item.pid?.toString() || item.product_id) !== productId))
 
         toast({
           title: "Removed from wishlist",
           description: "Item removed from your wishlist",
         })
+
+        // Update the SWR cache for the full wishlist - remove the product from cached array
+        const cacheKey = ["wishlist", user.id]
+        globalMutate(
+          cacheKey,
+          (cachedWishlistIds: number[] | undefined) => {
+            if (!cachedWishlistIds) return cachedWishlistIds
+            // Remove the product ID from the cached wishlist array
+            return cachedWishlistIds.filter((id: number) => id !== pidValue)
+          },
+          false // Don't revalidate, use the updated data immediately
+        )
+
+        // Also invalidate individual product status caches
+        globalMutate(
+          (key) => {
+            if (!Array.isArray(key)) return false
+            // Clear individual product wishlist status caches for this user
+            return key[0] === "wishlist-status" && key[1] === user.id && key[2] === pidValue
+          },
+          undefined,
+          { revalidate: false }
+        )
       }
     } catch (error) {
       console.error("[Group9] Error removing from wishlist:", error)
@@ -117,28 +271,50 @@ export default function ProfilePage() {
         data: { user: authUser },
       } = await supabase.auth.getUser()
 
-      if (!authUser) return
+      if (!authUser) {
+        toast({ title: "Save failed", description: "You must be logged in to save your profile.", variant: "destructive" })
+        return
+      }
 
-      const { error } = await (supabase.from("profiles" as any) as any).upsert(
+      // Validate required fields
+      if (!address.trim()) {
+        toast({ title: "Save failed", description: "Please enter your home address.", variant: "destructive" })
+        return
+      }
+
+      if (!taxId.trim()) {
+        toast({ title: "Save failed", description: "Please enter your tax ID.", variant: "destructive" })
+        return
+      }
+
+      // Insert or update customer record
+      const { error: customerError } = await (supabase.from("customers" as any) as any).upsert(
         [
           {
             uid: authUser.id,
-            address,
-            tax_id: taxId,
-            name: user?.name || authUser.user_metadata?.name || "User",
+            home_address: address.trim(),
+            tax_id: taxId.trim(),
           },
         ] as any,
         { onConflict: "uid" }
       )
 
-      if (error) {
-        toast({ title: "Save failed", description: error.message, variant: "destructive" })
+      if (customerError) {
+        console.error("[Group9] Error saving customer:", customerError)
+        toast({
+          title: "Save failed",
+          description: customerError.message || "Failed to save customer information.",
+          variant: "destructive"
+        })
         return
       }
 
-      setUser({ ...user, address: address || "Not provided", taxId: taxId || "" })
-      toast({ title: "Profile saved", description: "Your profile information has been updated." })
+      toast({
+        title: "Profile saved",
+        description: "Your customer information has been saved. You are now registered as a customer."
+      })
     } catch (e) {
+      console.error("[Group9] Error in saveAddress:", e)
       toast({ title: "Save failed", description: "Something went wrong.", variant: "destructive" })
     } finally {
       setSaving(false)
@@ -259,40 +435,67 @@ export default function ProfilePage() {
               </div>
             ) : (
               <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                {wishlist.map((item) => (
-                  <div
-                    key={item.id}
-                    className="bg-[#4ecdc4] border-4 border-black pixel-shadow hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all"
-                  >
-                    <div className="relative aspect-square bg-[#2a9d8f] border-b-4 border-black overflow-hidden">
-                      <Image
-                        src={item.products.image_url || "/placeholder.svg"}
-                        alt={item.products.name}
-                        fill
-                        className="object-cover"
-                      />
-                    </div>
+                {wishlist.map((item) => {
+                  const productId = item.pid?.toString() || item.product_id?.toString() || ""
+                  return (
+                    <div
+                      key={item.id}
+                      className="bg-[#4ecdc4] border-4 border-black pixel-shadow hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all"
+                    >
+                      <Link href={`/products/${productId}`} className="block">
+                        <div className="relative aspect-square bg-[#2a9d8f] border-b-4 border-black overflow-hidden cursor-pointer">
+                          <Image
+                            src={item.products_belong_to?.image_url || "/placeholder.svg"}
+                            alt={item.products_belong_to?.name || "Product"}
+                            fill
+                            className="object-cover"
+                          />
+                        </div>
+                      </Link>
 
-                    <div className="p-4 space-y-3">
-                      <h3 className="font-bold text-lg leading-tight line-clamp-2 text-[#1a1a3e]">
-                        {item.products.name}
-                      </h3>
+                      <div className="p-4 space-y-3">
+                        <Link href={`/products/${productId}`}>
+                          <h3 className="font-bold text-lg leading-tight line-clamp-2 text-[#1a1a3e] cursor-pointer hover:text-[#5b3a8f] transition-colors">
+                            {item.products_belong_to?.name || "Product"}
+                          </h3>
+                        </Link>
 
-                      <div className="flex items-center justify-between">
-                        <span className="font-[family-name:var(--font-pixel)] text-xl text-[#1a1a3e]">
-                          ${item.products.price}
-                        </span>
-                        <Button
-                          onClick={() => removeFromWishlist(item.product_id)}
-                          size="icon"
-                          className="bg-[#dc3545] hover:bg-[#c82333] text-white border-4 border-black"
-                        >
-                          <Heart className="h-4 w-4 fill-current" />
-                        </Button>
+                        <div className="flex items-center justify-between">
+                          <div className="flex flex-col">
+                            {item.products_belong_to?.discount_rate > 0 ? (
+                              <>
+                                <span className="text-sm text-[#6c757d] line-through">
+                                  ${(item.products_belong_to?.price || 0).toFixed(2)}
+                                </span>
+                                <span className="font-[family-name:var(--font-pixel)] text-xl text-[#dc3545]">
+                                  ${(item.products_belong_to?.discounted_price || 0).toFixed(2)}
+                                </span>
+                                <span className="text-xs font-bold text-white bg-[#dc3545] px-1 border border-black">
+                                  {Math.round(item.products_belong_to.discount_rate * 100)}% OFF
+                                </span>
+                              </>
+                            ) : (
+                              <span className="font-[family-name:var(--font-pixel)] text-xl text-[#1a1a3e]">
+                                ${(item.products_belong_to?.price || 0).toFixed(2)}
+                              </span>
+                            )}
+                          </div>
+                          <Button
+                            onClick={(e) => {
+                              e.preventDefault()
+                              e.stopPropagation()
+                              removeFromWishlist(productId)
+                            }}
+                            size="icon"
+                            className="bg-[#dc3545] hover:bg-[#c82333] text-white border-4 border-black"
+                          >
+                            <Heart className="h-4 w-4 fill-current" />
+                          </Button>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </div>

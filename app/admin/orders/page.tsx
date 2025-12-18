@@ -36,18 +36,43 @@ export default function OrderManagementPage() {
 
   const updateOrderStatus = async (orderId: string, newStatus: string) => {
     try {
+      console.log("[Group9] Updating order status:", { orderId, newStatus })
       const supabase = getSupabaseBrowserClient()
-      const { error } = await supabase.from("orders").update({ status: newStatus }).eq("id", orderId)
+      
+      // Check authentication and refresh session if needed
+      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      
+      if (authError || !user) {
+        console.error("[Group9] Auth error:", authError)
+        toast({
+          title: "Authentication required",
+          description: "Please log in again to update order status",
+          variant: "destructive",
+        })
+        // Optionally redirect to login
+        // window.location.href = "/login"
+        return
+      }
+
+      // Now make the update request
+      const { data, error } = await supabase
+        .from("orders")
+        .update({ status: newStatus })
+        .eq("id", orderId)
+        .select()
 
       if (error) {
+        console.error("[Group9] Error updating order status:", error)
+        console.error("[Group9] Error details:", JSON.stringify(error, null, 2))
         toast({
           title: "Update failed",
-          description: error.message,
+          description: error.message || "Failed to update order status",
           variant: "destructive",
         })
         return
       }
 
+      console.log("[Group9] Order status updated successfully:", data)
       toast({
         title: "Status updated",
         description: "Order status has been updated successfully",
@@ -55,7 +80,12 @@ export default function OrderManagementPage() {
 
       fetchOrders()
     } catch (error) {
-      console.error("[Group9] Error updating order:", error)
+      console.error("[Group9] Unexpected error updating order:", error)
+      toast({
+        title: "Update failed",
+        description: error instanceof Error ? error.message : "An unexpected error occurred",
+        variant: "destructive",
+      })
     }
   }
 
@@ -108,9 +138,8 @@ export default function OrderManagementPage() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="pending">PENDING</SelectItem>
                       <SelectItem value="processing">PROCESSING</SelectItem>
-                      <SelectItem value="shipped">SHIPPED</SelectItem>
+                      <SelectItem value="in-transit">IN-TRANSIT</SelectItem>
                       <SelectItem value="delivered">DELIVERED</SelectItem>
                       <SelectItem value="cancelled">CANCELLED</SelectItem>
                     </SelectContent>

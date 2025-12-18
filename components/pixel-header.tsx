@@ -2,25 +2,87 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
-import { ShoppingCart, User, Search, Package } from "lucide-react"
+import { ShoppingCart, User, Search, Package, BarChart3, Settings } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useCart } from "@/lib/cart-context"
 import { getSupabaseBrowserClient } from "@/lib/supabase/client"
+import { DiscountNotificationBadge } from "@/components/discount-notification-badge"
 
 export function PixelHeader() {
   const { totalItems } = useCart()
   const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [isSalesManager, setIsSalesManager] = useState(false)
+  const [isProductManager, setIsProductManager] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
     checkAuth()
   }, [])
 
   const checkAuth = async () => {
-    const supabase = getSupabaseBrowserClient()
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-    setIsAuthenticated(!!user)
+    try {
+      const supabase = getSupabaseBrowserClient()
+      const {
+        data: { user },
+        error: authError,
+      } = await supabase.auth.getUser()
+      
+      if (authError) {
+        console.error("[Group9] Auth error:", authError)
+        setIsAuthenticated(false)
+        setIsSalesManager(false)
+        setIsProductManager(false)
+        return
+      }
+      
+      if (user) {
+        setIsAuthenticated(true)
+        // Check if user is a sales manager
+        try {
+          const { data: salesManagerData, error: salesManagerError } = await supabase
+            .from("sales_managers")
+            .select("uid")
+            .eq("uid", user.id)
+            .maybeSingle()
+          
+          if (salesManagerError) {
+            console.error("[Group9] Sales manager check error:", salesManagerError)
+          }
+          setIsSalesManager(!!salesManagerData)
+        } catch (error) {
+          console.error("[Group9] Error checking sales manager:", error)
+          setIsSalesManager(false)
+        }
+
+        // Check if user is a product manager
+        try {
+          const { data: productManagerData, error: productManagerError } = await supabase
+            .from("product_managers")
+            .select("uid")
+            .eq("uid", user.id)
+            .maybeSingle()
+          
+          if (productManagerError) {
+            console.error("[Group9] Product manager check error:", productManagerError)
+          }
+          setIsProductManager(!!productManagerData)
+        } catch (error) {
+          console.error("[Group9] Error checking product manager:", error)
+          setIsProductManager(false)
+        }
+      } else {
+        setIsAuthenticated(false)
+        setIsSalesManager(false)
+        setIsProductManager(false)
+      }
+    } catch (error) {
+      console.error("[Group9] Error checking auth:", error)
+      setIsAuthenticated(false)
+      setIsSalesManager(false)
+      setIsProductManager(false)
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   return (
@@ -52,6 +114,7 @@ export function PixelHeader() {
 
           {/* Actions */}
           <div className="flex items-center gap-3">
+            {/* Search - Always visible */}
             <Button
               variant="ghost"
               size="icon"
@@ -59,40 +122,78 @@ export function PixelHeader() {
             >
               <Search className="h-5 w-5" />
             </Button>
-            <Link href={isAuthenticated ? "/profile" : "/login"}>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="text-white hover:bg-[#3d2660] hover:text-[#ffb347] border-2 border-transparent hover:border-black"
-              >
-                <User className="h-5 w-5" />
-              </Button>
-            </Link>
-            {isAuthenticated && (
-              <Link href="/orders">
+            
+            {/* User/Profile or Dashboard */}
+            {isSalesManager ? (
+              <Link href="/sales-manager/dashboard">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="text-white hover:bg-[#3d2660] hover:text-[#ffb347] border-2 border-transparent hover:border-black"
+                  title="Sales Manager Dashboard"
+                >
+                  <BarChart3 className="h-5 w-5" />
+                </Button>
+              </Link>
+            ) : isProductManager ? (
+              <Link href="/product-manager">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="text-white hover:bg-[#3d2660] hover:text-[#ffb347] border-2 border-transparent hover:border-black"
+                  title="Product Manager Dashboard"
+                >
+                  <Settings className="h-5 w-5" />
+                </Button>
+              </Link>
+            ) : (
+              <Link href={isAuthenticated ? "/profile" : "/login"}>
                 <Button
                   variant="ghost"
                   size="icon"
                   className="text-white hover:bg-[#3d2660] hover:text-[#ffb347] border-2 border-transparent hover:border-black"
                 >
+                  <User className="h-5 w-5" />
+                </Button>
+              </Link>
+            )}
+            
+            {/* Notifications - Only for authenticated customers */}
+            {isAuthenticated && !isSalesManager && !isProductManager && (
+              <DiscountNotificationBadge />
+            )}
+            
+            {/* Orders - Hidden for sales managers and product managers */}
+            {!isSalesManager && !isProductManager && (
+              <Link href={isAuthenticated ? "/orders" : "/login"}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="text-white hover:bg-[#3d2660] hover:text-[#ffb347] border-2 border-transparent hover:border-black"
+                  title={isAuthenticated ? "View orders" : "Login to view orders"}
+                >
                   <Package className="h-5 w-5" />
                 </Button>
               </Link>
             )}
-            <Link href="/cart">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="text-white hover:bg-[#3d2660] hover:text-[#ffb347] border-2 border-transparent hover:border-black relative"
-              >
-                <ShoppingCart className="h-5 w-5" />
-                {totalItems > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-[#ffb347] text-black text-xs w-5 h-5 flex items-center justify-center border-2 border-black font-bold">
-                    {totalItems}
-                  </span>
-                )}
-              </Button>
-            </Link>
+            
+            {/* Cart - Hidden for sales managers and product managers */}
+            {!isSalesManager && !isProductManager && (
+              <Link href="/cart">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="text-white hover:bg-[#3d2660] hover:text-[#ffb347] border-2 border-transparent hover:border-black relative"
+                >
+                  <ShoppingCart className="h-5 w-5" />
+                  {totalItems > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-[#ffb347] text-black text-xs w-5 h-5 flex items-center justify-center border-2 border-black font-bold">
+                      {totalItems}
+                    </span>
+                  )}
+                </Button>
+              </Link>
+            )}
           </div>
         </div>
       </div>

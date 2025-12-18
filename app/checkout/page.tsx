@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { PixelHeader } from "@/components/pixel-header"
@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { ArrowLeft } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { getSupabaseBrowserClient } from "@/lib/supabase/client"
 
 export default function CheckoutPage() {
   const router = useRouter()
@@ -19,7 +20,7 @@ export default function CheckoutPage() {
   const { toast } = useToast()
   const [loading, setLoading] = useState(false)
 
-  const [formData, setFormData] = useState({
+const [formData, setFormData] = useState({
     name: "",
     email: "",
     address: "",
@@ -31,18 +32,66 @@ export default function CheckoutPage() {
     cardCvv: "",
   })
 
+  // Pre-fill form with user profile data if logged in
+  useEffect(() => {
+    const loadUserProfile = async () => {
+      const supabase = getSupabaseBrowserClient()
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+
+      if (user) {
+        // Fetch profile data
+        const { data: profileData } = await supabase
+          .from("profiles")
+          .select("name, email")
+          .eq("uid", user.id)
+          .maybeSingle()
+
+        if (profileData) {
+          setFormData((prev) => ({
+            ...prev,
+            name: profileData.name || prev.name,
+            email: profileData.email || user.email || prev.email,
+          }))
+        } else if (user.email) {
+          setFormData((prev) => ({
+            ...prev,
+            email: user.email || prev.email,
+          }))
+        }
+      }
+    }
+
+    loadUserProfile()
+  }, [])
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
 
     try {
+      // Check if user is logged in (client-side check)
+      const supabase = getSupabaseBrowserClient()
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+
+      console.log("[Group9] Client-side: User check before order:", user?.id || "NOT LOGGED IN")
+
       // Create order
+      const taxAmount = totalPrice * 0.20
+      const finalTotal = totalPrice + taxAmount
+
       const response = await fetch("/api/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include", // Include cookies so server can read session
         body: JSON.stringify({
           items,
-          total: totalPrice,
+          subtotal: totalPrice,
+          tax_amount: taxAmount,
+          total: finalTotal,
           shipping_address: `${formData.address}, ${formData.city}, ${formData.zipCode}, ${formData.country}`,
           payment_method: "Credit Card",
           customer_email: formData.email,
@@ -51,13 +100,40 @@ export default function CheckoutPage() {
       })
 
       const data = await response.json()
+      console.log("[Group9] Client-side: Order response:", data)
 
       if (data.error) {
-        toast({
-          title: "Order failed",
-          description: data.error,
-          variant: "destructive",
-        })
+        // Handle detailed stock validation errors
+        if (data.details && Array.isArray(data.details)) {
+          // Show main error with first detail
+          toast({
+            title: "Order failed - Stock unavailable",
+            description: data.details[0],
+            variant: "destructive",
+          })
+
+          // Show additional errors if multiple items have issues
+          if (data.details.length > 1) {
+            setTimeout(() => {
+              data.details.slice(1).forEach((detail: string, index: number) => {
+                setTimeout(() => {
+                  toast({
+                    title: "Additional stock issue",
+                    description: detail,
+                    variant: "destructive",
+                  })
+                }, index * 300) // Stagger toasts
+              })
+            }, 500)
+          }
+        } else {
+          // Fallback for generic errors
+          toast({
+            title: "Order failed",
+            description: data.error,
+            variant: "destructive",
+          })
+        }
         return
       }
 
@@ -98,6 +174,9 @@ export default function CheckoutPage() {
       </div>
     )
   }
+
+  const taxAmount = totalPrice * 0.20
+  const finalTotal = totalPrice + taxAmount
 
   return (
     <div className="min-h-screen bg-[#f8f9fa]">
@@ -269,12 +348,22 @@ export default function CheckoutPage() {
                     <span className="font-bold">${(item.price * item.quantity).toFixed(2)}</span>
                   </div>
                 ))}
+
+                <div className="flex justify-between text-white pt-2 border-t border-white/20">
+                  <span className="font-semibold">Subtotal:</span>
+                  <span className="font-bold">${totalPrice.toFixed(2)}</span>
+                </div>
+
+                <div className="flex justify-between text-white">
+                  <span className="font-semibold">Tax (20%):</span>
+                  <span className="font-bold">${taxAmount.toFixed(2)}</span>
+                </div>
               </div>
 
               <div className="border-t-4 border-white pt-4">
                 <div className="flex justify-between text-white text-xl">
                   <span className="font-bold">Total:</span>
-                  <span className="font-[family-name:var(--font-pixel)]">${totalPrice.toFixed(2)}</span>
+                  <span className="font-[family-name:var(--font-pixel)]">${finalTotal.toFixed(2)}</span>
                 </div>
               </div>
             </div>

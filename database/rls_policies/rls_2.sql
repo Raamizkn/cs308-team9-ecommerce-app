@@ -1,0 +1,48 @@
+-- Only product managers can edit categories
+CREATE POLICY "Allow Product Managers to manage categories"
+  ON public.categories FOR ALL
+  USING (is_product_manager())
+  WITH CHECK (is_product_manager());
+
+-- Only sales manager can manage disccount campaigns
+CREATE POLICY "Allow Sales Managers to manage discount campaigns"
+  ON public.discount_campaigns FOR ALL
+  USING (is_sales_manager())
+  WITH CHECK (is_sales_manager());
+
+ALTER TABLE public.applies_to ENABLE ROW LEVEL SECURITY;
+-- Anyone can see which products have discounts
+CREATE POLICY "Allow public read access to discount mappings"
+  ON public.applies_to FOR SELECT
+  USING (true);
+
+-- Product managers have all CRUD operations
+CREATE POLICY "PM Full Access"
+  ON public.products_belong_to FOR ALL
+  USING ( is_product_manager() )
+  WITH CHECK ( is_product_manager() );
+
+-- Allow sales managers to select on products table
+CREATE POLICY "SM Select Access"
+  ON public.products_belong_to FOR SELECT
+  USING ( is_sales_manager() );
+
+-- ALow sales managers to update rows in products table
+CREATE POLICY "SM Update Access"
+  ON public.products_belong_to FOR UPDATE
+  USING ( is_sales_manager() )
+  WITH CHECK ( is_sales_manager() );
+
+-- Only Sales Managers can map discounts to products 
+CREATE POLICY "Allow Sales Managers to manage discount mappings"
+  ON public.applies_to FOR ALL
+  USING (is_sales_manager())
+  WITH CHECK (is_sales_manager());
+
+
+-- users can only insert, update, see, delete their own wish_list
+ALTER TABLE public.wish_for ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users can manage their own wish list"
+    ON public.wish_for FOR ALL
+    USING (uid = auth.uid()) -- Applies to SELECT, UPDATE, DELETE
+    WITH CHECK (uid = auth.uid()); -- Applies to INSERT, UPDATE
