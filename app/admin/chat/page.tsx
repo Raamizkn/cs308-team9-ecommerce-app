@@ -90,11 +90,11 @@ export default function AdminChatPage() {
       }
 
       // Get unique user_ids
-      const uniqueUserIds = Array.from(new Set(messages?.map((m) => m.user_id) || []))
+      const uniqueUserIds: string[] = Array.from(new Set(messages?.map((m: any) => m.user_id as string) || [])) as string[]
 
       // Fetch user info for each unique user_id
       const conversationsWithInfo = await Promise.all(
-        uniqueUserIds.map(async (userId) => {
+        uniqueUserIds.map(async (userId: string) => {
           // Check if it's a UUID (logged-in user) or guest
           if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) {
             const { data: profile } = await supabase
@@ -245,14 +245,43 @@ export default function AdminChatPage() {
 
     setUploading(true)
     try {
-      // TODO: Connect to Supabase Storage
-      // For now, return mock URLs
-      return attachments.map((file) => ({
+      // Convert files to data URLs for immediate display (especially images)
+      const filePromises = attachments.map(async (file) => {
+        // For images, create a data URL so they can be displayed immediately
+        if (file.type && file.type.startsWith('image/')) {
+          return new Promise<{ name: string; type: string; size: number; url: string }>((resolve) => {
+            const reader = new FileReader()
+            reader.onload = (e) => {
+              resolve({
+                name: file.name,
+                type: file.type,
+                size: file.size,
+                url: e.target?.result as string, // data:image/png;base64,...
+              })
+            }
+            reader.onerror = () => {
+              // Fallback to blob URL if FileReader fails
+              resolve({
+                name: file.name,
+                type: file.type,
+                size: file.size,
+                url: URL.createObjectURL(file),
+              })
+            }
+            reader.readAsDataURL(file)
+          })
+        } else {
+          // For non-images, create a blob URL for download
+          return {
         name: file.name,
         type: file.type,
         size: file.size,
-        url: `mock://uploads/${file.name}`,
-      }))
+            url: URL.createObjectURL(file), // blob:http://...
+          }
+        }
+      })
+
+      return await Promise.all(filePromises)
     } catch (error) {
       console.error("[Group9] Error uploading files:", error)
       toast({
@@ -328,8 +357,8 @@ export default function AdminChatPage() {
       <main className="container mx-auto px-4 py-12">
         <div className="mb-8 flex items-center justify-between">
           <div>
-            <h1 className="font-[family-name:var(--font-pixel)] text-4xl text-[#1a1a3e] mb-2">LIVE CHAT</h1>
-            <p className="text-[#6c757d] font-semibold">{conversations.length} active conversations</p>
+          <h1 className="font-[family-name:var(--font-pixel)] text-4xl text-[#1a1a3e] mb-2">LIVE CHAT</h1>
+          <p className="text-[#6c757d] font-semibold">{conversations.length} active conversations</p>
           </div>
           <Button
             onClick={handleLogout}
@@ -432,17 +461,136 @@ export default function AdminChatPage() {
                             }
                           }
                           return attachmentsArray && Array.isArray(attachmentsArray) && attachmentsArray.length > 0 ? (
-                            <div className="mt-2 space-y-1">
-                              {attachmentsArray.map((file: any, idx: number) => (
-                                <div
-                                  key={idx}
-                                  className="flex items-center gap-2 p-2 bg-white/50 border border-black text-xs"
-                                >
-                                  {getFileIcon(file.type)}
-                                  <span className="truncate flex-1">{file.name}</span>
-                                  <span className="text-[#6c757d]">{file.size ? (file.size / 1024).toFixed(1) + 'KB' : ''}</span>
-                                </div>
-                              ))}
+                            <div className="mt-2 space-y-2">
+                              {attachmentsArray.map((file: any, idx: number) => {
+                                const isImage = file.type && file.type.startsWith('image/')
+                                const hasValidUrl = file.url && (file.url.startsWith('data:') || file.url.startsWith('blob:') || file.url.startsWith('http'))
+                                
+                                const handleDownload = async () => {
+                                  if (!file.url || file.url.startsWith('mock://')) {
+                                    toast({
+                                      title: "Download unavailable",
+                                      description: "File was not uploaded to storage. Download not available for this attachment.",
+                                      variant: "destructive",
+                                    })
+                                    return
+                                  }
+
+                                  try {
+                                    let blob: Blob
+                                    let downloadUrl: string
+
+                                    if (file.url.startsWith('data:')) {
+                                      // Convert data URL to blob
+                                      const response = await fetch(file.url)
+                                      blob = await response.blob()
+                                      downloadUrl = URL.createObjectURL(blob)
+                                    } else if (file.url.startsWith('blob:')) {
+                                      // For blob URLs, fetch and create new blob
+                                      const response = await fetch(file.url)
+                                      blob = await response.blob()
+                                      downloadUrl = URL.createObjectURL(blob)
+                                    } else {
+                                      // For HTTP URLs, use directly
+                                      downloadUrl = file.url
+                                    }
+
+                                    const link = document.createElement('a')
+                                    link.href = downloadUrl
+                                    link.download = file.name || 'attachment'
+                                    link.target = '_blank'
+                                    document.body.appendChild(link)
+                                    link.click()
+                                    document.body.removeChild(link)
+
+                                    // Clean up blob URL if we created one
+                                    if (downloadUrl.startsWith('blob:')) {
+                                      setTimeout(() => URL.revokeObjectURL(downloadUrl), 100)
+                                    }
+                                  } catch (error) {
+                                    console.error("[Group9] Error downloading file:", error)
+                                    toast({
+                                      title: "Download failed",
+                                      description: "Failed to download file. Please try again.",
+                                      variant: "destructive",
+                                    })
+                                  }
+                                }
+                                
+                                return (
+                                  <div key={idx} className="space-y-1">
+                                    {isImage && hasValidUrl ? (
+                                      // Display image preview with download option
+                                      <div 
+                                        className="border-2 border-black relative group cursor-pointer"
+                                        style={{ cursor: 'pointer' }}
+                                        onClick={(e) => {
+                                          e.preventDefault()
+                                          e.stopPropagation()
+                                          handleDownload()
+                                        }}
+                                      >
+                                        <img
+                                          src={file.url}
+                                          alt={file.name || 'Attachment'}
+                                          className="max-w-full h-auto max-h-64 object-contain bg-[#f8f9fa] pointer-events-none select-none"
+                                          title="Click to download"
+                                          draggable={false}
+                                          onError={(e) => {
+                                            // Fallback to file display if image fails to load
+                                            const target = e.target as HTMLImageElement
+                                            target.style.display = 'none'
+                                            const fallback = target.nextElementSibling as HTMLElement
+                                            if (fallback) fallback.style.display = 'flex'
+                                          }}
+                                        />
+                                        <div className="hidden flex items-center gap-2 p-2 bg-white/50 border-t-2 border-black text-xs">
+                                          {getFileIcon(file.type)}
+                                          <span className="truncate flex-1">{file.name}</span>
+                                          <button
+                                            onClick={(e) => {
+                                              e.preventDefault()
+                                              e.stopPropagation()
+                                              handleDownload()
+                                            }}
+                                            className="text-[#5b3a8f] hover:underline"
+                                            title="Download"
+                                          >
+                                            Download
+                                          </button>
+                                          <span className="text-[#6c757d]">{file.size ? (file.size / 1024).toFixed(1) + 'KB' : ''}</span>
+                                        </div>
+                                        {/* Download overlay on hover */}
+                                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+                                          <span className="text-white text-xs font-bold bg-black/50 px-2 py-1 border-2 border-white">
+                                            Click to Download
+                                          </span>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      // Display file info for non-images with download button
+                                      <div className="flex items-center gap-2 p-2 bg-white/50 border border-black text-xs">
+                                {getFileIcon(file.type)}
+                                <span className="truncate flex-1">{file.name}</span>
+                                    {file.url ? (
+                                      <button
+                                        onClick={(e) => {
+                                          e.preventDefault()
+                                          e.stopPropagation()
+                                          handleDownload()
+                                        }}
+                                        className="text-[#5b3a8f] hover:underline font-semibold"
+                                        title="Download file"
+                                      >
+                                        Download
+                                      </button>
+                                    ) : null}
+                                        <span className="text-[#6c757d]">{file.size ? (file.size / 1024).toFixed(1) + 'KB' : ''}</span>
+                          </div>
+                        )}
+                                  </div>
+                                )
+                              })}
                             </div>
                           ) : null
                         })()}
