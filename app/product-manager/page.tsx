@@ -102,6 +102,8 @@ export default function ProductManagerDashboardPage() {
   const [loadingCategories, setLoadingCategories] = useState(true)
   const [loadingInvoices, setLoadingInvoices] = useState(true)
   const [loadingDeliveries, setLoadingDeliveries] = useState(true)
+  const [pendingReviewsCount, setPendingReviewsCount] = useState(0)
+  const [loadingPendingReviews, setLoadingPendingReviews] = useState(true)
   const [user, setUser] = useState<any>(null)
   const [checkingAccess, setCheckingAccess] = useState(true)
   const [downloadingInvoiceId, setDownloadingInvoiceId] = useState<string | null>(null)
@@ -178,6 +180,7 @@ export default function ProductManagerDashboardPage() {
       fetchProducts()
       fetchInvoices()
       fetchDeliveries()
+      fetchPendingReviews()
     } catch (error) {
       console.error("[Group9] Error checking product manager access:", error)
       router.push("/login")
@@ -212,7 +215,7 @@ export default function ProductManagerDashboardPage() {
     try {
       setLoadingDeliveries(true)
       const supabase = getSupabaseBrowserClient()
-      
+
       // Fetch all orders with their items, products, and customer info via join
       const { data: ordersData, error: ordersError } = await supabase
         .from("orders")
@@ -241,13 +244,13 @@ export default function ProductManagerDashboardPage() {
       // Fetch customer names from profiles
       const userIds = [...new Set((ordersData || []).map((order: any) => order.user_id).filter(Boolean))]
       const profilesMap: Record<string, string> = {}
-      
+
       if (userIds.length > 0) {
         const { data: profilesData, error: profilesError } = await supabase
           .from("profiles")
           .select("uid, name")
           .in("uid", userIds)
-        
+
         if (profilesError) {
           console.error("[Group9] Error fetching profiles for deliveries:", profilesError)
         } else if (profilesData) {
@@ -260,10 +263,10 @@ export default function ProductManagerDashboardPage() {
       // Transform orders into delivery records
       const deliveryRecords: DeliveryRecord[] = (ordersData || []).flatMap((order: any) => {
         // Get customer name from profiles map, fallback to "Customer" or "Guest Customer"
-        const customerName = order.user_id 
+        const customerName = order.user_id
           ? (profilesMap[order.user_id] || "Customer")
           : "Guest Customer"
-        
+
         // Map each order item to a delivery record
         return (order.order_items || []).map((item: any, index: number) => {
           // Map order status to delivery status
@@ -315,7 +318,7 @@ export default function ProductManagerDashboardPage() {
     try {
       setLoadingInvoices(true)
       const supabase = getSupabaseBrowserClient()
-      
+
       // Fetch all orders with their items, products, and customer info via join
       const { data: ordersData, error: ordersError } = await supabase
         .from("orders")
@@ -344,13 +347,13 @@ export default function ProductManagerDashboardPage() {
       // Fetch customer names from profiles
       const userIds = [...new Set((ordersData || []).map((order: any) => order.user_id).filter(Boolean))]
       const profilesMap: Record<string, string> = {}
-      
+
       if (userIds.length > 0) {
         const { data: profilesData, error: profilesError } = await supabase
           .from("profiles")
           .select("uid, name")
           .in("uid", userIds)
-        
+
         if (profilesError) {
           console.error("[Group9] Error fetching profiles for invoices:", profilesError)
         } else if (profilesData) {
@@ -363,10 +366,10 @@ export default function ProductManagerDashboardPage() {
       // Transform orders into invoice records
       const invoiceRecords: InvoiceRecord[] = (ordersData || []).map((order: any) => {
         // Get customer name from profiles map, fallback to "Customer" or "Guest Customer"
-        const customerName = order.user_id 
+        const customerName = order.user_id
           ? (profilesMap[order.user_id] || "Customer")
           : "Guest Customer"
-        
+
         // Determine status for display
         let displayStatus: "awaiting-shipment" | "shipped" | "delivered" = "awaiting-shipment"
         if (order.status === "delivered") {
@@ -403,11 +406,27 @@ export default function ProductManagerDashboardPage() {
     }
   }
 
+  const fetchPendingReviews = async () => {
+    try {
+      setLoadingPendingReviews(true)
+      const response = await fetch("/api/reviews?status=pending")
+      if (response.ok) {
+        const data = await response.json()
+        setPendingReviewsCount(data.reviews?.length || 0)
+      }
+    } catch (error) {
+      console.error("[Group9] Error fetching pending reviews:", error)
+      // Don't show toast for this background fetch to avoid clutter
+    } finally {
+      setLoadingPendingReviews(false)
+    }
+  }
+
   const downloadInvoicePDF = async (orderId: string) => {
     setDownloadingInvoiceId(orderId)
     try {
       const supabase = getSupabaseBrowserClient()
-      
+
       // Fetch full order details
       const { data: order, error: orderError } = await supabase
         .from("orders")
@@ -422,7 +441,7 @@ export default function ProductManagerDashboardPage() {
       // Fetch customer information
       let customerName = "Customer"
       let customerEmail = "customer@pixelvault.com"
-      
+
       if (order.user_id) {
         try {
           // Fetch customer name from profiles
@@ -431,7 +450,7 @@ export default function ProductManagerDashboardPage() {
             .select("name")
             .eq("uid", order.user_id)
             .maybeSingle()
-          
+
           if (profileData?.name) {
             customerName = profileData.name
           }
@@ -661,11 +680,11 @@ export default function ProductManagerDashboardPage() {
       }
 
       const data = await response.json()
-      
+
       // Add new category to local state
       setCategories((prev) => [...prev, { cid: data.category.cid, name: data.category.name }])
       setNewCategory("")
-      
+
       toast({
         title: "Category added",
         description: `${data.category.name} has been successfully added`,
@@ -698,7 +717,7 @@ export default function ProductManagerDashboardPage() {
       // Remove category from local state
       setCategories((prev) => {
         const updated = prev.filter((category) => category.cid !== categoryToRemove.cid)
-        
+
         // If the deleted category was selected for new product, update it
         if (newProduct.category === categoryToRemove.name) {
           setNewProduct((prevProduct) => ({
@@ -706,10 +725,10 @@ export default function ProductManagerDashboardPage() {
             category: updated.length > 0 ? updated[0]?.name || "" : "",
           }))
         }
-        
+
         return updated
       })
-      
+
       toast({
         title: "Category removed",
         description: `${categoryToRemove.name} has been successfully removed`,
@@ -771,7 +790,7 @@ export default function ProductManagerDashboardPage() {
       }
 
       const supabase = getSupabaseBrowserClient()
-      
+
       // Map delivery status to order status
       // Database allows: 'processing', 'in-transit', 'delivered', 'cancelled'
       let orderStatus: string = "processing"
@@ -796,7 +815,7 @@ export default function ProductManagerDashboardPage() {
 
       // Update local state
       setDeliveries((prev) => prev.map((delivery) => (delivery.id === id ? { ...delivery, status } : delivery)))
-      
+
       toast({
         title: "Delivery updated",
         description: `Delivery ${id} marked as ${status}`,
@@ -952,57 +971,57 @@ export default function ProductManagerDashboardPage() {
           ) : (
             <div className="divide-y-2 divide-black">
               {products.map((product) => {
-              const isLow = product.stock <= 10 // Low stock threshold
-              return (
-                <div key={product.pid} className="p-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                  <div>
-                    <div className="flex items-center gap-3 mb-1">
-                      <h3 className="text-2xl font-bold text-[#1a1a3e]">{product.name}</h3>
-                      {isLow ? (
-                        <span className="px-3 py-1 bg-[#dc3545] text-white text-xs font-bold border-2 border-black">
-                          REORDER NOW
-                        </span>
-                      ) : (
-                        <span className="px-3 py-1 bg-[#6bcf7f] text-[#1a1a3e] text-xs font-bold border-2 border-black">
-                          OK
-                        </span>
-                      )}
+                const isLow = product.stock <= 10 // Low stock threshold
+                return (
+                  <div key={product.pid} className="p-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <div className="flex items-center gap-3 mb-1">
+                        <h3 className="text-2xl font-bold text-[#1a1a3e]">{product.name}</h3>
+                        {isLow ? (
+                          <span className="px-3 py-1 bg-[#dc3545] text-white text-xs font-bold border-2 border-black">
+                            REORDER NOW
+                          </span>
+                        ) : (
+                          <span className="px-3 py-1 bg-[#6bcf7f] text-[#1a1a3e] text-xs font-bold border-2 border-black">
+                            OK
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-sm text-[#6c757d] font-mono">SKU: {product.sku} • {product.category}</p>
+                      <p className="text-sm text-[#6c757d]">Distributor: {product.warehouse}</p>
+                      <div className="mt-3 flex flex-wrap gap-4 text-sm font-bold text-[#1a1a3e]">
+                        <span>Stock: {product.stock} units</span>
+                        <span>Price: ${product.price.toFixed(2)}</span>
+                      </div>
                     </div>
-                    <p className="text-sm text-[#6c757d] font-mono">SKU: {product.sku} • {product.category}</p>
-                    <p className="text-sm text-[#6c757d]">Distributor: {product.warehouse}</p>
-                    <div className="mt-3 flex flex-wrap gap-4 text-sm font-bold text-[#1a1a3e]">
-                      <span>Stock: {product.stock} units</span>
-                      <span>Price: ${product.price.toFixed(2)}</span>
+                    <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+                      <Input
+                        placeholder="+/- units"
+                        value={stockEdits[product.pid] ?? ""}
+                        onChange={(event) =>
+                          setStockEdits((prev) => ({
+                            ...prev,
+                            [product.pid]: event.target.value,
+                          }))
+                        }
+                        className="border-2 border-black bg-[#f8f9fa]"
+                      />
+                      <Button
+                        onClick={() => handleStockUpdate(product.pid)}
+                        className="bg-[#5b3a8f] text-white border-4 border-black font-bold"
+                      >
+                        UPDATE STOCK
+                      </Button>
+                      <Button
+                        onClick={() => handleRemoveProduct(product.pid)}
+                        className="bg-[#dc3545] text-white border-4 border-black font-bold"
+                      >
+                        REMOVE PRODUCT
+                      </Button>
                     </div>
                   </div>
-                  <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
-                    <Input
-                      placeholder="+/- units"
-                      value={stockEdits[product.pid] ?? ""}
-                      onChange={(event) =>
-                        setStockEdits((prev) => ({
-                          ...prev,
-                          [product.pid]: event.target.value,
-                        }))
-                      }
-                      className="border-2 border-black bg-[#f8f9fa]"
-                    />
-                    <Button
-                      onClick={() => handleStockUpdate(product.pid)}
-                      className="bg-[#5b3a8f] text-white border-4 border-black font-bold"
-                    >
-                      UPDATE STOCK
-                    </Button>
-                    <Button
-                      onClick={() => handleRemoveProduct(product.pid)}
-                      className="bg-[#dc3545] text-white border-4 border-black font-bold"
-                    >
-                      REMOVE PRODUCT
-                    </Button>
-                  </div>
-                </div>
-              )
-            })}
+                )
+              })}
             </div>
           )}
         </section>
@@ -1165,7 +1184,7 @@ export default function ProductManagerDashboardPage() {
                   const startIndex = (deliveryPage - 1) * itemsPerPage
                   const endIndex = startIndex + itemsPerPage
                   const paginatedDeliveries = deliveries.slice(startIndex, endIndex)
-                  
+
                   return paginatedDeliveries.map((delivery) => (
                     <div key={delivery.id} className="p-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                       <div>
@@ -1190,7 +1209,7 @@ export default function ProductManagerDashboardPage() {
                           <SelectContent>
                             <SelectItem value="packing">Packing</SelectItem>
                             <SelectItem value="in-transit">In Transit</SelectItem>
-                            <SelectItem 
+                            <SelectItem
                               value="delivered"
                               className="bg-[#6bcf7f] text-[#1a1a3e] font-bold hover:bg-[#5bb86f] focus:bg-[#5bb86f] data-[highlighted]:bg-[#5bb86f]"
                             >
@@ -1272,13 +1291,12 @@ export default function ProductManagerDashboardPage() {
                           <p className="text-lg font-bold text-[#1a1a3e]">Order {invoice.orderId}</p>
                         </div>
                         <div className="flex items-center gap-2">
-                          <span className={`px-3 py-1.5 border-2 border-black text-xs font-bold whitespace-nowrap ${
-                            invoice.status === "delivered" 
+                          <span className={`px-3 py-1.5 border-2 border-black text-xs font-bold whitespace-nowrap ${invoice.status === "delivered"
                               ? "bg-[#6bcf7f] text-[#1a1a3e]"
                               : invoice.status === "shipped"
-                              ? "bg-[#4ecdc4] text-[#1a1a3e]"
-                              : "bg-[#ffb347] text-[#1a1a3e]"
-                          }`}>
+                                ? "bg-[#4ecdc4] text-[#1a1a3e]"
+                                : "bg-[#ffb347] text-[#1a1a3e]"
+                            }`}>
                             {invoice.status.replace("-", " ").toUpperCase()}
                           </span>
                           <Button
@@ -1329,7 +1347,9 @@ export default function ProductManagerDashboardPage() {
             <div className="p-6 space-y-4">
               <div className="bg-[#f8f9fa] border-2 border-black p-4">
                 <p className="text-sm text-[#6c757d] mb-2">Pending approvals</p>
-                <p className="text-3xl font-bold text-[#1a1a3e]">3 reviews</p>
+                <p className="text-3xl font-bold text-[#1a1a3e]">
+                  {loadingPendingReviews ? "..." : `${pendingReviewsCount} reviews`}
+                </p>
                 <p className="text-sm text-[#6c757d]">
                   Pull data from `/api/reviews/pending` and show quick insights in this card.
                 </p>
