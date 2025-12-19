@@ -425,19 +425,7 @@ export default function ProductManagerDashboardPage() {
       
       if (order.user_id) {
         try {
-          const response = await fetch(`/api/users?user_id=${order.user_id}`)
-          if (response.ok) {
-            const userData = await response.json()
-            if (userData.name) {
-              customerName = userData.name
-            }
-            if (userData.email) {
-              customerEmail = userData.email
-            }
-          }
-        } catch (error) {
-          console.error("[Group9] Error fetching user info:", error)
-          // Fallback: try to get from profiles
+          // Fetch customer name from profiles
           const { data: profileData } = await supabase
             .from("profiles")
             .select("name")
@@ -447,16 +435,30 @@ export default function ProductManagerDashboardPage() {
           if (profileData?.name) {
             customerName = profileData.name
           }
+
+          // Fetch customer email using admin API (for product managers)
+          const emailResponse = await fetch(`/api/admin/user-email?user_id=${order.user_id}`)
+          if (emailResponse.ok) {
+            const emailData = await emailResponse.json()
+            if (emailData.email) {
+              customerEmail = emailData.email
+            }
+          } else {
+            console.error("[Group9] Error fetching customer email:", await emailResponse.text())
+          }
+        } catch (error) {
+          console.error("[Group9] Error fetching user info:", error)
         }
       }
 
-      // Calculate totals
-      const subtotal = order.order_items?.reduce((sum: number, item: any) => sum + (item.price * item.quantity), 0) || 0
+      // Use tax_amount, subtotal, and total from order (same as customer side)
+      // This ensures product manager sees exactly what customer sees
+      const subtotal = order.subtotal || order.order_items?.reduce((sum: number, item: any) => sum + (item.price * item.quantity), 0) || 0
       const shipping = 0
-      const tax = 0
-      const total = subtotal
+      const tax = order.tax_amount || 0
+      const total = order.total || subtotal + tax
 
-      // Prepare invoice data
+      // Prepare invoice data (exactly matching customer side format)
       const invoiceData = {
         orderId: order.id,
         orderDate: order.created_at,

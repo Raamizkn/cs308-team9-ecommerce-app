@@ -1,8 +1,31 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
+import { getSupabaseServerClient } from "@/lib/supabase/server"
 
 export async function GET(request: Request) {
   try {
+    // Verify the requester is a product manager
+    const supabase = await getSupabaseServerClient()
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser()
+
+    if (userError || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    // Check if user is a product manager
+    const { data: productManagerData, error: roleError } = await supabase
+      .from("product_managers")
+      .select("uid")
+      .eq("uid", user.id)
+      .maybeSingle()
+
+    if (roleError || !productManagerData) {
+      return NextResponse.json({ error: "Forbidden: Product manager access required" }, { status: 403 })
+    }
+
     const { searchParams } = new URL(request.url)
     const userId = searchParams.get("user_id")
 
