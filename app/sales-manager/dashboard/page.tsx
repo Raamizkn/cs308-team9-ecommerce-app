@@ -181,13 +181,7 @@ export default function SalesManagerDashboard() {
             </div>
           </Link>
 
-          <Link href="/sales-manager/orders">
-            <div className="bg-[#ff6b9d] border-4 border-black p-8 pixel-shadow hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all cursor-pointer h-full flex flex-col">
-              <ShoppingBag className="h-12 w-12 text-white mb-4" />
-              <h2 className="font-bold text-2xl text-white mb-2">ORDER OVERVIEW</h2>
-              <p className="text-white flex-grow">View all orders and order details</p>
-            </div>
-          </Link>
+
 
           <Link href="/sales-manager/refunds">
             <div className="bg-[#9b59b6] border-4 border-black p-8 pixel-shadow hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all cursor-pointer h-full flex flex-col">
