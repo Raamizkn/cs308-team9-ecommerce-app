@@ -148,8 +148,11 @@ export default function SalesManagerDashboard() {
           </div>
         </div>
 
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-          <Link href="/sales-manager/pricing">
+        <div className="flex flex-wrap justify-center gap-6">
+          <Link
+            href="/sales-manager/pricing"
+            className="w-full md:w-[calc(50%-0.75rem)] lg:w-[calc(33.333%-1rem)]"
+          >
             <div className="bg-[#4ecdc4] border-4 border-black p-8 pixel-shadow hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all cursor-pointer h-full flex flex-col">
               <DollarSign className="h-12 w-12 text-[#1a1a3e] mb-4" />
               <h2 className="font-bold text-2xl text-[#1a1a3e] mb-2">PRICING MANAGEMENT</h2>
@@ -157,7 +160,10 @@ export default function SalesManagerDashboard() {
             </div>
           </Link>
 
-          <Link href="/sales-manager/discounts">
+          <Link
+            href="/sales-manager/discounts"
+            className="w-full md:w-[calc(50%-0.75rem)] lg:w-[calc(33.333%-1rem)]"
+          >
             <div className="bg-[#ffb347] border-4 border-black p-8 pixel-shadow hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all cursor-pointer h-full flex flex-col">
               <Percent className="h-12 w-12 text-[#1a1a3e] mb-4" />
               <h2 className="font-bold text-2xl text-[#1a1a3e] mb-2">DISCOUNT CAMPAIGNS</h2>
@@ -165,7 +171,10 @@ export default function SalesManagerDashboard() {
             </div>
           </Link>
 
-          <Link href="/sales-manager/invoices">
+          <Link
+            href="/sales-manager/invoices"
+            className="w-full md:w-[calc(50%-0.75rem)] lg:w-[calc(33.333%-1rem)]"
+          >
             <div className="bg-[#5b3a8f] border-4 border-black p-8 pixel-shadow hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all cursor-pointer h-full flex flex-col">
               <FileText className="h-12 w-12 text-white mb-4" />
               <h2 className="font-bold text-2xl text-white mb-2">INVOICES</h2>
@@ -173,7 +182,10 @@ export default function SalesManagerDashboard() {
             </div>
           </Link>
 
-          <Link href="/sales-manager/revenue">
+          <Link
+            href="/sales-manager/revenue"
+            className="w-full md:w-[calc(50%-0.75rem)] lg:w-[calc(33.333%-1rem)]"
+          >
             <div className="bg-[#6bcf7f] border-4 border-black p-8 pixel-shadow hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all cursor-pointer h-full flex flex-col">
               <BarChart3 className="h-12 w-12 text-[#1a1a3e] mb-4" />
               <h2 className="font-bold text-2xl text-[#1a1a3e] mb-2">REVENUE & PROFIT</h2>
@@ -181,9 +193,10 @@ export default function SalesManagerDashboard() {
             </div>
           </Link>
 
-
-
-          <Link href="/sales-manager/refunds">
+          <Link
+            href="/sales-manager/refunds"
+            className="w-full md:w-[calc(50%-0.75rem)] lg:w-[calc(33.333%-1rem)]"
+          >
             <div className="bg-[#9b59b6] border-4 border-black p-8 pixel-shadow hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all cursor-pointer h-full flex flex-col">
               <TrendingUp className="h-12 w-12 text-white mb-4" />
               <h2 className="font-bold text-2xl text-white mb-2">REFUND REQUESTS</h2>
