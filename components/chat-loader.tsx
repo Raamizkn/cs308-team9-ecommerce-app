@@ -44,12 +44,12 @@ export function ChatLoader() {
 
   useEffect(() => {
     if (!isSupportAgent && !checking) {
-      const t = setTimeout(() => {
-        // Attempt to prefetch the chat bundle in the background after idle.
-        ;(ChatWidget as any).preload?.()
-      }, 5000)
+    const t = setTimeout(() => {
+      // Attempt to prefetch the chat bundle in the background after idle.
+      ;(ChatWidget as any).preload?.()
+    }, 5000)
 
-      return () => clearTimeout(t)
+    return () => clearTimeout(t)
     }
   }, [isSupportAgent, checking])
 

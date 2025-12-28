@@ -59,9 +59,9 @@ export default function OrdersPage() {
       }
 
       // If user is a regular customer, proceed
-      setUserId(authUser.id)
-      const { data } = await supabase.from("users").select("*").eq("id", authUser.id).single()
-      setUser(data || { email: authUser.email, name: authUser.user_metadata?.name })
+        setUserId(authUser.id)
+        const { data } = await supabase.from("users").select("*").eq("id", authUser.id).single()
+        setUser(data || { email: authUser.email, name: authUser.user_metadata?.name })
     } catch (error) {
       console.error("[Group9] Error checking auth:", error)
       router.push("/")
