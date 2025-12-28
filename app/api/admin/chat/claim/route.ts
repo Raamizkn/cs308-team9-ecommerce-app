@@ -51,15 +51,26 @@ export async function POST(request: Request) {
         .maybeSingle()
 
       // PGRST116 = not found (OK), 42P01 = relation does not exist (table missing)
-      if (fetchError && fetchError.code !== 'PGRST116' && fetchError.code !== '42P01') {
-        console.error("[Group9] Error fetching conversation:", fetchError)
-        return NextResponse.json({ error: "Failed to fetch conversation" }, { status: 500 })
+      if (fetchError) {
+        const errorCode = fetchError.code || (fetchError as any).hint || ''
+        const errorMessage = fetchError.message || ''
+        
+        // Check if table doesn't exist
+        if (errorCode === '42P01' || errorMessage.includes('does not exist') || errorMessage.includes('relation') || errorCode === 'PGRST116') {
+          console.log("[Group9] chat_conversations table does not exist or conversation not found, will create")
+          existingConversation = null
+        } else {
+          console.error("[Group9] Error fetching conversation:", fetchError)
+          console.error("[Group9] Error code:", errorCode, "Message:", errorMessage)
+          return NextResponse.json({ error: "Failed to fetch conversation" }, { status: 500 })
+        }
+      } else {
+        existingConversation = data
       }
-
-      existingConversation = data
     } catch (tableError: any) {
       // Table might not exist - that's OK, we'll create it
-      console.log("[Group9] chat_conversations table may not exist, will create:", tableError?.message)
+      const errorMsg = tableError?.message || String(tableError)
+      console.log("[Group9] chat_conversations table may not exist, will create:", errorMsg)
       existingConversation = null
     }
 
@@ -92,8 +103,11 @@ export async function POST(request: Request) {
         .single()
 
       if (claimError) {
+        const errorCode = claimError.code || (claimError as any).hint || ''
+        const errorMessage = claimError.message || ''
+        
         // If table doesn't exist (42P01), return success but note that claim system isn't active
-        if (claimError.code === '42P01') {
+        if (errorCode === '42P01' || errorMessage.includes('does not exist') || errorMessage.includes('relation')) {
           console.log("[Group9] chat_conversations table does not exist, claim system not active")
           return NextResponse.json({
             success: true,
@@ -102,6 +116,7 @@ export async function POST(request: Request) {
           })
         }
         console.error("[Group9] Error claiming conversation:", claimError)
+        console.error("[Group9] Error code:", errorCode, "Message:", errorMessage)
         return NextResponse.json({ error: "Failed to claim conversation" }, { status: 500 })
       }
 
