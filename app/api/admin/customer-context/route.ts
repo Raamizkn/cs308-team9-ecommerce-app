@@ -19,16 +19,37 @@ export async function GET(request: Request) {
 
     const adminSupabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, serviceRoleKey)
 
-    // Fetch recent orders
+    // Fetch recent orders - include order_items for better context
     const { data: orders, error: ordersError } = await adminSupabase
       .from("orders")
-      .select("id, created_at, status, total_amount")
+      .select(`
+        id,
+        created_at,
+        status,
+        total,
+        subtotal,
+        tax_amount,
+        order_items (
+          id,
+          quantity,
+          price,
+          products_belong_to (
+            pid,
+            name,
+            price,
+            image_url
+          )
+        )
+      `)
       .eq("user_id", userId)
       .order("created_at", { ascending: false })
       .limit(5)
 
     if (ordersError) {
       console.error("[Group9] Error fetching orders:", ordersError)
+      console.error("[Group9] Orders error details:", JSON.stringify(ordersError, null, 2))
+    } else {
+      console.log(`[Group9] Fetched ${orders?.length || 0} orders for user ${userId}`)
     }
 
     // Fetch cart items - need to join through shopping_cart_assigned_to
@@ -38,6 +59,7 @@ export async function GET(request: Request) {
         cart_id,
         contains_item (
           quantity,
+          pid,
           products_belong_to (
             pid,
             name,
@@ -50,11 +72,18 @@ export async function GET(request: Request) {
       .maybeSingle()
 
     let cartItems: any[] = []
-    if (!cartError && cartData?.contains_item) {
+    if (cartError) {
+      console.error("[Group9] Error fetching cart:", cartError)
+      console.error("[Group9] Cart error details:", JSON.stringify(cartError, null, 2))
+    } else if (cartData?.contains_item) {
       cartItems = cartData.contains_item.map((item: any) => ({
         quantity: item.quantity,
-        products: item.products_belong_to,
+        pid: item.pid,
+        products: item.products_belong_to, // Use 'products' (plural) to match frontend expectation
       }))
+      console.log(`[Group9] Fetched ${cartItems.length} cart items for user ${userId}`)
+    } else {
+      console.log(`[Group9] No cart found for user ${userId} (cartData:`, cartData, ")")
     }
 
     // Fetch wishlist - fetch separately and combine since nested select might not work
@@ -84,8 +113,14 @@ export async function GET(request: Request) {
       console.error("[Group9] Error fetching wishlist:", wishlistError)
     }
 
+    // Format orders to include total_amount alias for backward compatibility
+    const formattedOrders = (orders || []).map((order: any) => ({
+      ...order,
+      total_amount: order.total, // Add alias for frontend compatibility
+    }))
+
     return NextResponse.json({
-      orders: orders || [],
+      orders: formattedOrders,
       cart: cartItems || [],
       wishlist: formattedWishlist || [],
     })

@@ -915,7 +915,7 @@ export default function AdminChatPage() {
                                   {order.status}
                                 </span>
                               </p>
-                              <p className="font-bold mt-1">${order.total_amount}</p>
+                              <p className="font-bold mt-1">${order.total || order.total_amount || 0}</p>
                               <p className="text-[#6c757d]">{new Date(order.created_at).toLocaleDateString()}</p>
                             </div>
                           ))}
