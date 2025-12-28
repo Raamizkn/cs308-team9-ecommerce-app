@@ -132,8 +132,9 @@ export async function POST(
                     }
                 }
 
-                // Calculate refund amount
-                const refundAmount = parseFloat(orderItem.price || 0) * (refundRequest.quantity || 0)
+                // Calculate refund amount including 20% tax
+                // Tax is 20%, so multiply by 1.2 to include tax in refund
+                const refundAmount = parseFloat(orderItem.price || 0) * (refundRequest.quantity || 0) * 1.2
 
                 // Send email if we have the email address
                 if (customerEmail) {
