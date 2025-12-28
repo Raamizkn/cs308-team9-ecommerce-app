@@ -96,34 +96,35 @@ export default function AdminChatPage() {
     }
   }, [selectedUser, conversations])
 
-  useEffect(() => {
-    // Only auto-scroll if user is near bottom
-    if (isNearBottom) {
-    scrollToBottom()
-    }
-  }, [messages, isNearBottom])
+  // Auto-scroll disabled - user can manually scroll to see new messages
+  // useEffect(() => {
+  //   // Only auto-scroll if user is near bottom
+  //   if (isNearBottom) {
+  //   scrollToBottom()
+  //   }
+  // }, [messages, isNearBottom])
 
-  // Detect scroll position
-  useEffect(() => {
-    const container = messagesContainerRef.current
-    if (!container) return
+  // Scroll detection disabled - auto-scroll is disabled
+  // useEffect(() => {
+  //   const container = messagesContainerRef.current
+  //   if (!container) return
 
-    const handleScroll = () => {
-      const { scrollTop, scrollHeight, clientHeight } = container
-      // Consider "near bottom" if within 100px of bottom
-      const threshold = 100
-      const isAtBottom = scrollHeight - scrollTop - clientHeight < threshold
-      setIsNearBottom(isAtBottom)
-    }
+  //   const handleScroll = () => {
+  //     const { scrollTop, scrollHeight, clientHeight } = container
+  //     // Consider "near bottom" if within 100px of bottom
+  //     const threshold = 100
+  //     const isAtBottom = scrollHeight - scrollTop - clientHeight < threshold
+  //     setIsNearBottom(isAtBottom)
+  //   }
 
-    container.addEventListener('scroll', handleScroll)
-    // Check initial position
-    handleScroll()
+  //   container.addEventListener('scroll', handleScroll)
+  //   // Check initial position
+  //   handleScroll()
 
-    return () => {
-      container.removeEventListener('scroll', handleScroll)
-    }
-  }, [selectedUser]) // Re-check when conversation changes
+  //   return () => {
+  //     container.removeEventListener('scroll', handleScroll)
+  //   }
+  // }, [selectedUser]) // Re-check when conversation changes
 
   const fetchConversations = async () => {
     try {
@@ -421,8 +422,8 @@ export default function AdminChatPage() {
       setNewMessage("")
       setAttachments([])
       fetchMessages()
-      // Force scroll when sending your own message
-      setTimeout(() => scrollToBottom(true), 100)
+      // Auto-scroll disabled - user can manually scroll if needed
+      // setTimeout(() => scrollToBottom(true), 100)
     } catch (error) {
       console.error("[Group9] Error sending message:", error)
       toast({
