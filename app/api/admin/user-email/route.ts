@@ -15,15 +15,22 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    // Check if user is a product manager
-    const { data: productManagerData, error: roleError } = await supabase
+    // Check if user is a product manager OR support agent
+    const { data: productManagerData, error: productManagerError } = await supabase
       .from("product_managers")
       .select("uid")
       .eq("uid", user.id)
       .maybeSingle()
 
-    if (roleError || !productManagerData) {
-      return NextResponse.json({ error: "Forbidden: Product manager access required" }, { status: 403 })
+    const { data: supportAgentData, error: supportAgentError } = await supabase
+      .from("support_agents")
+      .select("uid")
+      .eq("uid", user.id)
+      .maybeSingle()
+
+    // Allow if user is either a product manager or support agent
+    if ((productManagerError || !productManagerData) && (supportAgentError || !supportAgentData)) {
+      return NextResponse.json({ error: "Forbidden: Product manager or Support agent access required" }, { status: 403 })
     }
 
     const { searchParams } = new URL(request.url)

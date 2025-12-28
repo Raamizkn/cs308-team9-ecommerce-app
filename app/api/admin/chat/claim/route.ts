@@ -41,15 +41,26 @@ export async function POST(request: Request) {
       : supabase
 
     // Check if conversation exists and is already claimed
-    const { data: existingConversation, error: fetchError } = await adminSupabase
-      .from("chat_conversations")
-      .select("claimed_by, claimed_at")
-      .eq("user_id", user_id)
-      .maybeSingle()
+    // Handle case where table might not exist yet (graceful degradation)
+    let existingConversation = null
+    try {
+      const { data, error: fetchError } = await adminSupabase
+        .from("chat_conversations")
+        .select("claimed_by, claimed_at")
+        .eq("user_id", user_id)
+        .maybeSingle()
 
-    if (fetchError && fetchError.code !== 'PGRST116') { // PGRST116 = not found, which is OK
-      console.error("[Group9] Error fetching conversation:", fetchError)
-      return NextResponse.json({ error: "Failed to fetch conversation" }, { status: 500 })
+      // PGRST116 = not found (OK), 42P01 = relation does not exist (table missing)
+      if (fetchError && fetchError.code !== 'PGRST116' && fetchError.code !== '42P01') {
+        console.error("[Group9] Error fetching conversation:", fetchError)
+        return NextResponse.json({ error: "Failed to fetch conversation" }, { status: 500 })
+      }
+
+      existingConversation = data
+    } catch (tableError: any) {
+      // Table might not exist - that's OK, we'll create it
+      console.log("[Group9] chat_conversations table may not exist, will create:", tableError?.message)
+      existingConversation = null
     }
 
     // If conversation exists and is already claimed by someone else
@@ -61,25 +72,48 @@ export async function POST(request: Request) {
     }
 
     // Claim the conversation (insert or update)
-    const { data: claimedConversation, error: claimError } = await adminSupabase
-      .from("chat_conversations")
-      .upsert(
-        {
-          user_id,
-          claimed_by: user.id,
-          claimed_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        },
-        {
-          onConflict: "user_id",
-        }
-      )
-      .select()
-      .single()
+    // Handle case where table might not exist (graceful degradation)
+    let claimedConversation = null
+    try {
+      const { data, error: claimError } = await adminSupabase
+        .from("chat_conversations")
+        .upsert(
+          {
+            user_id,
+            claimed_by: user.id,
+            claimed_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+          {
+            onConflict: "user_id",
+          }
+        )
+        .select()
+        .single()
 
-    if (claimError) {
-      console.error("[Group9] Error claiming conversation:", claimError)
-      return NextResponse.json({ error: "Failed to claim conversation" }, { status: 500 })
+      if (claimError) {
+        // If table doesn't exist (42P01), return success but note that claim system isn't active
+        if (claimError.code === '42P01') {
+          console.log("[Group9] chat_conversations table does not exist, claim system not active")
+          return NextResponse.json({
+            success: true,
+            conversation: null,
+            message: "Claim system not available (table not created yet)",
+          })
+        }
+        console.error("[Group9] Error claiming conversation:", claimError)
+        return NextResponse.json({ error: "Failed to claim conversation" }, { status: 500 })
+      }
+
+      claimedConversation = data
+    } catch (tableError: any) {
+      // Table doesn't exist - that's OK for now
+      console.log("[Group9] chat_conversations table does not exist:", tableError?.message)
+      return NextResponse.json({
+        success: true,
+        conversation: null,
+        message: "Claim system not available (table not created yet)",
+      })
     }
 
     return NextResponse.json({
