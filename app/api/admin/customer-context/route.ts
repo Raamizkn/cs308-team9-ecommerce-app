@@ -53,11 +53,23 @@ export async function GET(request: Request) {
     }
 
     // Fetch cart items - need to join through shopping_cart_assigned_to
-    const { data: cartData, error: cartError } = await adminSupabase
+    // First check if cart exists
+    const { data: cartExists, error: cartCheckError } = await adminSupabase
       .from("shopping_cart_assigned_to")
-      .select(`
-        cart_id,
-        contains_item (
+      .select("cart_id")
+      .eq("uid", userId)
+      .maybeSingle()
+
+    let cartItems: any[] = []
+    
+    if (cartCheckError && cartCheckError.code !== 'PGRST116') {
+      // PGRST116 = not found, which is OK
+      console.error("[Group9] Error checking cart existence:", cartCheckError)
+    } else if (cartExists?.cart_id) {
+      // Cart exists, fetch items
+      const { data: cartItemsData, error: cartItemsError } = await adminSupabase
+        .from("contains_item")
+        .select(`
           quantity,
           pid,
           products_belong_to (
@@ -66,24 +78,24 @@ export async function GET(request: Request) {
             price,
             image_url
           )
-        )
-      `)
-      .eq("uid", userId)
-      .maybeSingle()
+        `)
+        .eq("cart_id", cartExists.cart_id)
 
-    let cartItems: any[] = []
-    if (cartError) {
-      console.error("[Group9] Error fetching cart:", cartError)
-      console.error("[Group9] Cart error details:", JSON.stringify(cartError, null, 2))
-    } else if (cartData?.contains_item) {
-      cartItems = cartData.contains_item.map((item: any) => ({
-        quantity: item.quantity,
-        pid: item.pid,
-        products: item.products_belong_to, // Use 'products' (plural) to match frontend expectation
-      }))
-      console.log(`[Group9] Fetched ${cartItems.length} cart items for user ${userId}`)
+      if (cartItemsError) {
+        console.error("[Group9] Error fetching cart items:", cartItemsError)
+        console.error("[Group9] Cart items error details:", JSON.stringify(cartItemsError, null, 2))
+      } else if (cartItemsData && cartItemsData.length > 0) {
+        cartItems = cartItemsData.map((item: any) => ({
+          quantity: item.quantity,
+          pid: item.pid,
+          products: item.products_belong_to, // Use 'products' (plural) to match frontend expectation
+        }))
+        console.log(`[Group9] Fetched ${cartItems.length} cart items for user ${userId}`)
+      } else {
+        console.log(`[Group9] Cart exists but is empty for user ${userId}`)
+      }
     } else {
-      console.log(`[Group9] No cart found for user ${userId} (cartData:`, cartData, ")")
+      console.log(`[Group9] No cart found for user ${userId} (cart may be in localStorage only)`)
     }
 
     // Fetch wishlist - fetch separately and combine since nested select might not work
