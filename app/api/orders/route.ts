@@ -272,6 +272,37 @@ export async function PATCH(request: Request) {
         return NextResponse.json({ error: "Only processing orders can be cancelled" }, { status: 400 })
       }
 
+      // Fetch all order items to restore stock
+      const { data: orderItems, error: itemsError } = await supabase
+        .from("order_items")
+        .select("product_id, quantity")
+        .eq("order_id", order_id)
+
+      if (itemsError) {
+        console.error("[Group9] Error fetching order items:", itemsError)
+        return NextResponse.json({ error: "Failed to fetch order items" }, { status: 500 })
+      }
+
+      // Restore stock for each product in the order
+      if (orderItems && orderItems.length > 0) {
+        console.log("[Group9] Restoring stock for", orderItems.length, "items in cancelled order:", order_id)
+        
+        for (const item of orderItems) {
+          const { error: stockError } = await supabase.rpc("increment_stock", {
+            product_id: item.product_id,
+            quantity: item.quantity,
+          })
+
+          if (stockError) {
+            console.error("[Group9] Error restoring stock for product:", item.product_id, stockError)
+            // Continue with other items even if one fails
+          } else {
+            console.log(`[Group9] Restored ${item.quantity} units for product ID ${item.product_id}`)
+          }
+        }
+      }
+
+      // Update order status to cancelled
       const { error } = await supabase.from("orders").update({ status: "cancelled" }).eq("id", order_id)
       if (error) {
         return NextResponse.json({ error: "Failed to cancel order" }, { status: 500 })
