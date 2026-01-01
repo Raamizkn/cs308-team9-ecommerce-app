@@ -79,6 +79,10 @@ export default function ProductDetailPage() {
   const [submittingRating, setSubmittingRating] = useState(false)
   const [submittingComment, setSubmittingComment] = useState(false)
   const [userId, setUserId] = useState<string | null>(null)
+  const [existingRating, setExistingRating] = useState<number | null>(null)
+  const [existingComment, setExistingComment] = useState<string>("")
+  const [justUpdatedRating, setJustUpdatedRating] = useState(false)
+  const [justUpdatedComment, setJustUpdatedComment] = useState(false)
 
   // Get wishlist mutate function for cache updates
   const { mutate: mutateWishlist } = useWishlist(userId)
@@ -88,6 +92,9 @@ export default function ProductDetailPage() {
     fetchReviews()
     checkReviewEligibility()
     checkUserAuth()
+    // Clear update flags on page load to ensure fresh data is fetched
+    setJustUpdatedRating(false)
+    setJustUpdatedComment(false)
   }, [params.id])
 
   const checkUserAuth = async () => {
@@ -134,13 +141,34 @@ export default function ProductDetailPage() {
   const fetchReviews = async () => {
     try {
       setLoadingReviews(true)
-      const response = await fetch(`/api/reviews?product_id=${params.id}`)
+      // Add cache-busting timestamp to ensure fresh data after updates
+      const cacheBuster = Date.now()
+      const response = await fetch(`/api/reviews?product_id=${params.id}&_t=${cacheBuster}`, {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache',
+        }
+      })
       if (!response.ok) {
         const error = await response.json()
         throw new Error(error.error || "Failed to fetch reviews")
       }
       const data = await response.json()
-      setReviews(data.reviews || [])
+      // Force state update by creating a new array reference to ensure React detects the change
+      const newReviews = data.reviews || []
+      console.log("[Group9] Fetched reviews:", newReviews.length, "reviews")
+      // Log the user's rating if it exists
+      const supabase = getSupabaseBrowserClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        const userRating = newReviews.find((r: any) => 
+          r.customerId === user.id && r.rating !== null && r.rating !== undefined && r.rating > 0
+        )
+        if (userRating) {
+          console.log("[Group9] User's current rating in fetched reviews:", userRating.rating)
+        }
+      }
+      setReviews([...newReviews])
     } catch (error) {
       console.error("[Group9] Error fetching reviews:", error)
       // Don't show error toast for reviews, just log it
@@ -188,6 +216,7 @@ export default function ProductDetailPage() {
 
       // Check separately if user has rated and if user has commented
       if (hasDeliveredProduct) {
+        // Add a small random parameter to prevent caching
         const { data: existingReviews } = await supabase
           .from("reviews")
           .select("review_id, rating, comment")
@@ -195,17 +224,50 @@ export default function ProductDetailPage() {
           .eq("customer_id", user.id)
 
         // Check for rating row (rating IS NOT NULL, comment IS NULL)
-        const hasRatingRow = existingReviews?.some(
+        const ratingRow = existingReviews?.find(
           (r: any) => r.rating !== null && r.comment === null
         )
+        const hasRatingRow = !!ratingRow
         
         // Check for comment row (comment IS NOT NULL, rating IS NULL)
-        const hasCommentRow = existingReviews?.some(
+        const commentRow = existingReviews?.find(
           (r: any) => r.comment !== null && r.rating === null
         )
+        const hasCommentRow = !!commentRow
 
-        setHasRated(!!hasRatingRow)
-        setHasCommented(!!hasCommentRow)
+        setHasRated(hasRatingRow)
+        setHasCommented(hasCommentRow)
+        
+        // Don't overwrite existingRating if we just updated it (to avoid showing stale DB value)
+        if (!justUpdatedRating) {
+          // Normal case: update from database
+          if (ratingRow?.rating) {
+            setExistingRating(ratingRow.rating)
+          } else if (!existingRating) {
+            // Only set to null if we don't have a value
+            setExistingRating(null)
+          }
+        } else {
+          console.log("[Group9] Preserving recently updated rating:", existingRating, "instead of potentially stale DB value:", ratingRow?.rating)
+          // Clear the flag after a delay so future refreshes work normally
+          setTimeout(() => {
+            setJustUpdatedRating(false)
+            console.log("[Group9] Cleared justUpdatedRating flag")
+          }, 10000) // Increased to 10 seconds to give database more time
+        }
+        
+        // Similar logic for comment - don't overwrite if we just updated it
+        if (!justUpdatedComment) {
+          setExistingComment(commentRow?.comment || "")
+        } else {
+          console.log("[Group9] Preserving recently updated comment")
+          // Clear the flag after a delay
+          setTimeout(() => {
+            setJustUpdatedComment(false)
+            console.log("[Group9] Cleared justUpdatedComment flag")
+          }, 10000)
+        }
+        
         setCanReview(hasDeliveredProduct) // Can review if they have delivered product
       } else {
         setCanReview(false)
@@ -243,23 +305,117 @@ export default function ProductDetailPage() {
       })
 
       const data = await response.json()
+      
+      console.log("[Group9] API Response:", JSON.stringify(data, null, 2))
+      console.log("[Group9] Selected rating being sent:", selectedRating)
+      console.log("[Group9] Response review rating:", data.review?.rating)
 
       if (!response.ok) {
         throw new Error(data.error || "Failed to submit rating")
       }
 
+      // Check if this was an update or new submission
+      const isUpdate = hasRated
+      
       toast({
-        title: "Rating submitted!",
-        description: "Your rating has been submitted and is visible immediately.",
+        title: isUpdate ? "Rating updated!" : "Rating submitted!",
+        description: isUpdate 
+          ? "Your rating has been updated and is visible immediately."
+          : "Your rating has been submitted and is visible immediately.",
       })
+
+      // Update existing rating from response immediately - use the rating we sent if response doesn't have it
+      const newRating = data.review?.rating !== null && data.review?.rating !== undefined 
+        ? data.review.rating 
+        : selectedRating
+      
+      console.log("[Group9] Setting existingRating to:", newRating)
+      setExistingRating(newRating)
+      setJustUpdatedRating(true) // Flag that we just updated the rating
+      setJustUpdatedComment(true) // Also protect comment from being overwritten
+      console.log("[Group9] Updated existingRating to:", newRating)
+
+      // Also immediately update the reviews state if we have the review data
+      if (data.review) {
+        setReviews(prevReviews => {
+          // Find and update the user's rating in the reviews array
+          const updatedReviews = prevReviews.map((review: Review) => {
+            if (review.customerId === data.review.customerId && 
+                review.rating !== null && 
+                review.rating !== undefined && 
+                (!review.comment || review.comment.trim() === "")) {
+              return {
+                ...review,
+                rating: newRating
+              }
+            }
+            return review
+          })
+          
+          // If the review doesn't exist in the array, add it
+          const hasUserRating = updatedReviews.some((review: Review) => 
+            review.customerId === data.review.customerId && 
+            review.rating !== null && 
+            review.rating !== undefined
+          )
+          
+          if (!hasUserRating && data.review) {
+            updatedReviews.push({
+              ...data.review,
+              rating: newRating,
+              customerName: data.review.customerName || "Anonymous",
+              profiles: { name: data.review.customerName || "Anonymous" }
+            })
+          }
+          
+          console.log("[Group9] Updated reviews array, new rating:", newRating)
+          return updatedReviews
+        })
+      }
 
       // Reset form
       setSelectedRating(0)
       setShowRatingDialog(false)
 
-      // Refresh reviews and eligibility
-      await fetchReviews()
-      await checkReviewEligibility()
+      // Don't refresh anything immediately - we've already updated the state correctly
+      // The state update we did above is the source of truth
+      // The API confirmed the update was successful, so we trust that value
+      // Only refresh after a longer delay, and preserve our updated values
+      setTimeout(async () => {
+        console.log("[Group9] Delayed refresh (preserving updated state)...")
+        // Store the values we just set before refreshing
+        const correctRating = newRating
+        const correctComment = existingComment // Preserve comment too
+        
+        // Refresh eligibility and reviews, but we'll restore our values if they get overwritten
+        await Promise.all([
+          checkReviewEligibility(),
+          fetchReviews()
+        ])
+        
+        // Restore the correct rating if it was overwritten
+        if (existingRating !== correctRating) {
+          console.log("[Group9] Restoring correct rating after refresh:", correctRating)
+          setExistingRating(correctRating)
+          // Also update the reviews array
+          setReviews(prevReviews => {
+            return prevReviews.map((review: Review) => {
+              if (review.customerId === data.review?.customerId && 
+                  review.rating !== null && 
+                  review.rating !== undefined) {
+                return { ...review, rating: correctRating }
+              }
+              return review
+            })
+          })
+        }
+        
+        // Restore the correct comment if it was overwritten
+        if (existingComment !== correctComment && correctComment) {
+          console.log("[Group9] Restoring correct comment after refresh")
+          setExistingComment(correctComment)
+        }
+      }, 2000)
     } catch (error: any) {
       console.error("[Group9] Error submitting rating:", error)
       toast({
@@ -300,18 +456,104 @@ export default function ProductDetailPage() {
         throw new Error(data.error || "Failed to submit comment")
       }
 
+      // Check if this was an update or new submission
+      const isUpdate = hasCommented
+      
       toast({
-        title: "Comment submitted!",
-        description: "Your comment will be visible after product manager approval.",
+        title: isUpdate ? "Comment updated!" : "Comment submitted!",
+        description: isUpdate
+          ? "Your comment has been updated and will be visible after product manager approval."
+          : "Your comment will be visible after product manager approval.",
       })
+
+      // Update existing comment from response if available
+      const newComment = data.review?.comment || reviewComment.trim()
+      if (newComment) {
+        console.log("[Group9] Setting existingComment to:", newComment)
+        setExistingComment(newComment)
+        setJustUpdatedComment(true) // Set flag to protect comment from being overwritten
+        setJustUpdatedRating(true) // Also set flag to protect rating from being overwritten
+      }
+
+      // Also immediately update the reviews state if we have the review data
+      if (data.review) {
+        setReviews(prevReviews => {
+          // Find and update the user's comment in the reviews array
+          const updatedReviews = prevReviews.map((review: Review) => {
+            if (review.customerId === data.review.customerId && 
+                review.comment !== null && 
+                review.comment !== undefined) {
+              return {
+                ...review,
+                comment: newComment,
+                status: data.review.status || review.status
+              }
+            }
+            return review
+          })
+          
+          // If the review doesn't exist in the array, add it
+          const hasUserComment = updatedReviews.some((review: Review) => 
+            review.customerId === data.review.customerId && 
+            review.comment !== null && 
+            review.comment !== undefined
+          )
+          
+          if (!hasUserComment && data.review) {
+            updatedReviews.push({
+              ...data.review,
+              comment: newComment,
+              customerName: data.review.customerName || "Anonymous",
+              profiles: { name: data.review.customerName || "Anonymous" }
+            })
+          }
+          
+          console.log("[Group9] Updated reviews array with new comment")
+          return updatedReviews
+        })
+      }
 
       // Reset form
       setReviewComment("")
       setShowCommentDialog(false)
 
-      // Refresh reviews and eligibility
-      await fetchReviews()
-      await checkReviewEligibility()
+      // Don't refresh immediately - we've already updated the state correctly
+      // Only refresh after a delay, and preserve our updated values
+      setTimeout(async () => {
+        console.log("[Group9] Delayed refresh after comment update (preserving state)...")
+        // Store the values we want to preserve
+        const correctRating = existingRating
+        const correctComment = newComment
+        
+        // Refresh eligibility and reviews
+        await Promise.all([
+          checkReviewEligibility(),
+          fetchReviews()
+        ])
+        
+        // Restore the correct rating if it was overwritten
+        if (existingRating !== correctRating && correctRating) {
+          console.log("[Group9] Restoring correct rating after comment update refresh:", correctRating)
+          setExistingRating(correctRating)
+          // Also update the reviews array
+          setReviews(prevReviews => {
+            return prevReviews.map((review: Review) => {
+              if (review.customerId === data.review?.customerId && 
+                  review.rating !== null && 
+                  review.rating !== undefined) {
+                return { ...review, rating: correctRating }
+              }
+              return review
+            })
+          })
+        }
+        
+        // Restore the correct comment if it was overwritten
+        if (existingComment !== correctComment && correctComment) {
+          console.log("[Group9] Restoring correct comment after refresh")
+          setExistingComment(correctComment)
+        }
+      }, 2000)
     } catch (error: any) {
       console.error("[Group9] Error submitting comment:", error)
       toast({
@@ -700,11 +942,42 @@ export default function ProductDetailPage() {
                         <span className="text-sm text-[#6bcf7f] font-semibold">✓ You've already rated this product</span>
                       )}
                     </div>
-                    <Dialog open={showRatingDialog} onOpenChange={setShowRatingDialog}>
+                    <Dialog 
+                      open={showRatingDialog} 
+                      onOpenChange={async (open) => {
+                        setShowRatingDialog(open)
+                        if (open && hasRated) {
+                          // Fetch the latest rating from database when dialog opens to ensure we have the most current value
+                          const supabase = getSupabaseBrowserClient()
+                          const { data: { user } } = await supabase.auth.getUser()
+                          if (user) {
+                            const { data: latestReview } = await supabase
+                              .from("reviews")
+                              .select("rating")
+                              .eq("product_id", parseInt(params.id as string))
+                              .eq("customer_id", user.id)
+                              .eq("comment", null)
+                              .not("rating", "is", null)
+                              .maybeSingle()
+                            
+                            if (latestReview?.rating) {
+                              setExistingRating(latestReview.rating)
+                              setSelectedRating(latestReview.rating)
+                              console.log("[Group9] Dialog opened - set rating to:", latestReview.rating)
+                            } else if (existingRating) {
+                              setSelectedRating(existingRating)
+                            }
+                          } else if (existingRating) {
+                            setSelectedRating(existingRating)
+                          }
+                        } else if (!open) {
+                          setSelectedRating(0)
+                        }
+                      }}
+                    >
                       <DialogTrigger asChild>
                         <Button 
                           className="bg-[#ffb347] hover:bg-[#ffd93d] text-black border-4 border-black font-bold w-full"
-                          disabled={hasRated}
                         >
                           <Star className="h-4 w-4 mr-2" />
                           {hasRated ? "UPDATE RATING" : "RATE THIS PRODUCT"}
@@ -788,11 +1061,20 @@ export default function ProductDetailPage() {
                         <span className="text-sm text-[#6bcf7f] font-semibold">✓ You've already commented on this product</span>
                       )}
                     </div>
-                    <Dialog open={showCommentDialog} onOpenChange={setShowCommentDialog}>
+                    <Dialog 
+                      open={showCommentDialog} 
+                      onOpenChange={(open) => {
+                        setShowCommentDialog(open)
+                        if (open && hasCommented && existingComment) {
+                          setReviewComment(existingComment)
+                        } else if (!open) {
+                          setReviewComment("")
+                        }
+                      }}
+                    >
                       <DialogTrigger asChild>
                         <Button 
                           className="bg-[#ffb347] hover:bg-[#ffd93d] text-black border-4 border-black font-bold w-full"
-                          disabled={hasCommented}
                         >
                           <MessageSquare className="h-4 w-4 mr-2" />
                           {hasCommented ? "UPDATE COMMENT" : "POST COMMENT"}
