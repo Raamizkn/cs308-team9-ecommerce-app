@@ -502,12 +502,13 @@ export default function OrderDetailPage() {
                 {order.order_items?.map((item: any) => (
                   <div key={item.id} className="pb-4 border-b-4 border-[#e9ecef] last:border-0">
                     <div className="flex gap-4 mb-2">
-                      <div className="relative w-20 h-20 bg-[#4ecdc4] border-4 border-black flex-shrink-0">
+                      <div className="relative w-20 h-20 bg-[#2a9d8f] border-4 border-black flex-shrink-0">
                         <Image
                           src={getProductImage(item.products_belong_to?.name, item.products_belong_to?.image_url)}
                           alt={item.products_belong_to?.name || "Product"}
                           fill
                           className="object-contain"
+                          style={{ objectPosition: 'center' }}
                         />
                       </div>
                       <div className="flex-1">

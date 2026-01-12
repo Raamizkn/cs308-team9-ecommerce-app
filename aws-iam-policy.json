@@ -1,0 +1,27 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowProductImageUpload",
+      "Effect": "Allow",
+      "Action": [
+        "s3:PutObject"
+      ],
+      "Resource": "arn:aws:s3:::amzn-s3-pixelvault/products/*"
+    },
+    {
+      "Sid": "AllowListBucket",
+      "Effect": "Allow",
+      "Action": [
+        "s3:ListBucket"
+      ],
+      "Resource": "arn:aws:s3:::amzn-s3-pixelvault",
+      "Condition": {
+        "StringLike": {
+          "s3:prefix": "products/*"
+        }
+      }
+    }
+  ]
+}
+

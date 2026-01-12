@@ -52,6 +52,7 @@ export async function GET(request: NextRequest) {
       warranty_status: product.warranty_status,
       product_cost: product.product_cost ? Number(product.product_cost) : null,
       cid: product.cid,
+      image_url: product.image_url || null,
     }))
 
     return NextResponse.json({ products: transformedProducts || [] })
@@ -87,7 +88,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { name, sku, category, price, stock, model, description, warranty_status, distributor_info, product_cost } = body
+    const { name, sku, category, price, stock, model, description, warranty_status, distributor_info, product_cost, image_url } = body
 
     // Validate required fields
     if (!name || !price || stock === undefined || !category) {
@@ -148,6 +149,7 @@ export async function POST(request: NextRequest) {
         warranty_status: warranty_status || null,
         distributor_info: distributor_info || null,
         product_cost: product_cost ? Number(product_cost) : null,
+        image_url: image_url || null,
         cid: categoryData.cid,
       })
       .select("*, categories(name)")
@@ -173,6 +175,7 @@ export async function POST(request: NextRequest) {
       warranty_status: newProduct.warranty_status,
       product_cost: newProduct.product_cost ? Number(newProduct.product_cost) : null,
       cid: newProduct.cid,
+      image_url: newProduct.image_url || null,
     }
 
     return NextResponse.json({ product: transformedProduct }, { status: 201 })
