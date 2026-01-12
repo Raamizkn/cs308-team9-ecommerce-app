@@ -6,7 +6,8 @@
     "build": "next build",
     "dev": "next dev",
     "lint": "eslint .",
-    "start": "next start"
+    "start": "next start",
+    "postinstall": "npm rebuild sharp"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.947.0",
