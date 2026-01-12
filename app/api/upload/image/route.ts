@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3"
 import { getSupabaseServerClient } from "@/lib/supabase/server"
-import sharp from "sharp"
 
 const s3Client = new S3Client({
   region: process.env.AWS_REGION!,
@@ -54,6 +53,9 @@ export async function POST(request: NextRequest) {
     // Convert file to buffer
     const bytes = await file.arrayBuffer()
     const buffer = Buffer.from(bytes)
+
+    // Dynamically import sharp only at runtime (not during build)
+    const sharp = (await import("sharp")).default
 
     // Convert to WebP using sharp - resize to fit within square (no cropping)
     // Remove white/light backgrounds and make them transparent
