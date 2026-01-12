@@ -54,91 +54,18 @@ export async function POST(request: NextRequest) {
     const bytes = await file.arrayBuffer()
     const buffer = Buffer.from(bytes)
 
-    // Dynamically import sharp only at runtime (not during build)
-    const sharp = (await import("sharp")).default
-
-    // Convert to WebP using sharp - resize to fit within square (no cropping)
-    // Remove white/light backgrounds and make them transparent
-    let webpBuffer: Buffer
-    try {
-      // First, resize to fit within 1200x1200 square, maintaining aspect ratio
-      let processed = sharp(buffer)
-        .resize(1200, 1200, {
-          fit: "inside", // Fits within dimensions, maintains aspect ratio
-          withoutEnlargement: true, // Don't enlarge small images
-        })
-        .ensureAlpha() // Ensure alpha channel exists
-
-      // Get image data to process white background removal
-      const { data, info } = await processed
-        .raw()
-        .toBuffer({ resolveWithObject: true })
-
-      // Process pixels to make white/light backgrounds transparent
-      const threshold = 240 // Pixels with RGB values above this are considered "white"
-      const channels = info.channels
-      const pixelCount = info.width * info.height
-      
-      for (let i = 0; i < pixelCount; i++) {
-        const pixelIndex = i * channels
-        const r = data[pixelIndex]
-        const g = data[pixelIndex + 1]
-        const b = data[pixelIndex + 2]
-        
-        // Check if pixel is white/very light (high RGB values, similar values = white/gray)
-        // Also check if it's close to white (high average)
-        const avg = (r + g + b) / 3
-        const isWhite = avg >= threshold && Math.abs(r - g) < 10 && Math.abs(g - b) < 10 && Math.abs(r - b) < 10
-        
-        if (isWhite && channels === 4) {
-          // Make white pixels fully transparent
-          const alphaIndex = pixelIndex + 3
-          data[alphaIndex] = 0
-        }
-      }
-
-      // Convert back to WebP with transparency support
-      webpBuffer = await sharp(data, {
-        raw: {
-          width: info.width,
-          height: info.height,
-          channels: channels,
-        },
-      })
-        .webp({ 
-          quality: 85,
-          effort: 6,
-          nearLossless: false,
-        })
-        .toBuffer()
-    } catch (error) {
-      console.error("[Group9] Error converting image to WebP:", error)
-      // Fallback: simple resize without background removal
-      try {
-        webpBuffer = await sharp(buffer)
-          .resize(1200, 1200, {
-            fit: "inside",
-            withoutEnlargement: true,
-          })
-          .ensureAlpha()
-          .webp({ quality: 85 })
-          .toBuffer()
-      } catch (fallbackError) {
-        return NextResponse.json({ error: "Failed to process image" }, { status: 500 })
-      }
-    }
-
-    // Generate unique filename
+    // Generate unique filename with original extension
     const timestamp = Date.now()
     const randomString = Math.random().toString(36).substring(2, 15)
-    const fileName = `products/${timestamp}-${randomString}.webp`
+    const fileExtension = file.name.split('.').pop() || 'jpg'
+    const fileName = `products/${timestamp}-${randomString}.${fileExtension}`
 
     // Upload to S3
     const command = new PutObjectCommand({
       Bucket: process.env.AWS_S3_BUCKET_NAME!,
       Key: fileName,
-      Body: webpBuffer,
-      ContentType: "image/webp",
+      Body: buffer,
+      ContentType: file.type,
       // ACL removed - bucket policy will handle public access
     })
 
