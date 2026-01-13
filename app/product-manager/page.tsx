@@ -121,7 +121,7 @@ export default function ProductManagerDashboardPage() {
     price: "",
     stock: "",
     reorderPoint: "",
-    distributor: "Spin Master",
+    distributor: "",
     description: "",
     model: "",
     warranty: "",
@@ -928,7 +928,7 @@ export default function ProductManagerDashboardPage() {
         price: "",
         stock: "",
         reorderPoint: "",
-        distributor: "Spin Master",
+        distributor: "",
         description: "",
         model: "",
         warranty: "",
@@ -1102,21 +1102,12 @@ export default function ProductManagerDashboardPage() {
                     ))}
                   </SelectContent>
                 </Select>
-                <Select
+                <Input
+                  placeholder="Distributor Info"
                   value={newProduct.distributor}
-                  onValueChange={(value) => setNewProduct({ ...newProduct, distributor: value })}
-                >
-                  <SelectTrigger className="border-2 border-black bg-[#f8f9fa]">
-                    <SelectValue placeholder="Distributor" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {["Spin Master", "CD Projekt Red", "The Pokemon Company", "Wizarding World Inc."].map((distributor) => (
-                      <SelectItem key={distributor} value={distributor}>
-                        {distributor}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  onChange={(event) => setNewProduct({ ...newProduct, distributor: event.target.value })}
+                  className="border-2 border-black bg-[#f8f9fa]"
+                />
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <Input
@@ -1182,10 +1173,10 @@ export default function ProductManagerDashboardPage() {
                     <div className="mt-4">
                       <p className="text-xs text-[#6c757d] mb-2 font-bold">Preview:</p>
                       <div className="relative w-32 h-32 border-2 border-black overflow-hidden bg-white">
-                        <img 
-                          src={imagePreview} 
-                          alt="Preview" 
-                          className="w-full h-full object-cover" 
+                        <img
+                          src={imagePreview}
+                          alt="Preview"
+                          className="w-full h-full object-cover"
                         />
                       </div>
                       <Button
@@ -1207,8 +1198,8 @@ export default function ProductManagerDashboardPage() {
                   Image will be automatically converted to WebP format for optimal performance
                 </p>
               </div>
-              <Button 
-                onClick={handleCreateProduct} 
+              <Button
+                onClick={handleCreateProduct}
                 disabled={uploadingImage}
                 className="w-full bg-[#4ecdc4] text-[#1a1a3e] border-4 border-black font-bold disabled:opacity-50 disabled:cursor-not-allowed"
               >
@@ -1398,10 +1389,10 @@ export default function ProductManagerDashboardPage() {
                         </div>
                         <div className="flex items-center gap-2">
                           <span className={`px-3 py-1.5 border-2 border-black text-xs font-bold whitespace-nowrap ${invoice.status === "delivered"
-                              ? "bg-[#6bcf7f] text-[#1a1a3e]"
-                              : invoice.status === "shipped"
-                                ? "bg-[#4ecdc4] text-[#1a1a3e]"
-                                : "bg-[#ffb347] text-[#1a1a3e]"
+                            ? "bg-[#6bcf7f] text-[#1a1a3e]"
+                            : invoice.status === "shipped"
+                              ? "bg-[#4ecdc4] text-[#1a1a3e]"
+                              : "bg-[#ffb347] text-[#1a1a3e]"
                             }`}>
                             {invoice.status.replace("-", " ").toUpperCase()}
                           </span>
