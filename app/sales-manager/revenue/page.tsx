@@ -305,97 +305,95 @@ export default function RevenueProfitPage() {
             ) : (
               <>
                 <div className="grid md:grid-cols-3 gap-6 mb-8">
-              <div className="bg-[#6bcf7f] border-4 border-black p-6 pixel-shadow-sm">
-                <DollarSign className="h-8 w-8 text-[#1a1a3e] mb-3" />
-                <p className="text-sm font-bold text-[#1a1a3e] mb-1">TOTAL REVENUE</p>
-                <p className="font-[family-name:var(--font-pixel)] text-3xl text-[#1a1a3e]">
-                  {formatCurrency(data.totals.totalRevenue)}
-                </p>
-              </div>
+                  <div className="bg-[#6bcf7f] border-4 border-black p-6 pixel-shadow-sm">
+                    <DollarSign className="h-8 w-8 text-[#1a1a3e] mb-3" />
+                    <p className="text-sm font-bold text-[#1a1a3e] mb-1">TOTAL REVENUE</p>
+                    <p className="font-[family-name:var(--font-pixel)] text-3xl text-[#1a1a3e]">
+                      {formatCurrency(data.totals.totalRevenue)}
+                    </p>
+                  </div>
 
-              <div className="bg-[#ff6b9d] border-4 border-black p-6 pixel-shadow-sm">
-                <TrendingDown className="h-8 w-8 text-white mb-3" />
-                <p className="text-sm font-bold text-white mb-1">TOTAL COST</p>
-                <p className="font-[family-name:var(--font-pixel)] text-3xl text-white">
-                  {formatCurrency(data.totals.totalCost)}
-                </p>
-              </div>
+                  <div className="bg-[#ff6b9d] border-4 border-black p-6 pixel-shadow-sm">
+                    <TrendingDown className="h-8 w-8 text-white mb-3" />
+                    <p className="text-sm font-bold text-white mb-1">TOTAL COST</p>
+                    <p className="font-[family-name:var(--font-pixel)] text-3xl text-white">
+                      {formatCurrency(data.totals.totalCost)}
+                    </p>
+                  </div>
 
-              <div
-                className={`border-4 border-black p-6 pixel-shadow-sm ${
-                  data.totals.totalProfit >= 0 ? "bg-[#4ecdc4]" : "bg-[#dc3545]"
-                }`}
-              >
-                <TrendingUp className={`h-8 w-8 mb-3 ${data.totals.totalProfit >= 0 ? "text-[#1a1a3e]" : "text-white"}`} />
-                <p className={`text-sm font-bold mb-1 ${data.totals.totalProfit >= 0 ? "text-[#1a1a3e]" : "text-white"}`}>
-                  {data.totals.totalProfit >= 0 ? "TOTAL PROFIT" : "TOTAL LOSS"}
-                </p>
-                <p
-                  className={`font-[family-name:var(--font-pixel)] text-3xl ${
-                    data.totals.totalProfit >= 0 ? "text-[#1a1a3e]" : "text-white"
-                  }`}
-                >
-                  {formatCurrency(Math.abs(data.totals.totalProfit))}
-                </p>
-                {data.totals.totalRevenue > 0 && (
-                  <p className={`text-xs mt-2 font-bold ${data.totals.totalProfit >= 0 ? "text-[#1a1a3e]" : "text-white"}`}>
-                    Margin: {((data.totals.totalProfit / data.totals.totalRevenue) * 100).toFixed(1)}%
-                  </p>
+                  <div
+                    className={`border-4 border-black p-6 pixel-shadow-sm ${data.totals.totalProfit >= 0 ? "bg-[#4ecdc4]" : "bg-[#dc3545]"
+                      }`}
+                  >
+                    <TrendingUp className={`h-8 w-8 mb-3 ${data.totals.totalProfit >= 0 ? "text-[#1a1a3e]" : "text-white"}`} />
+                    <p className={`text-sm font-bold mb-1 ${data.totals.totalProfit >= 0 ? "text-[#1a1a3e]" : "text-white"}`}>
+                      {data.totals.totalProfit >= 0 ? "TOTAL PROFIT" : "TOTAL LOSS"}
+                    </p>
+                    <p
+                      className={`font-[family-name:var(--font-pixel)] text-3xl ${data.totals.totalProfit >= 0 ? "text-[#1a1a3e]" : "text-white"
+                        }`}
+                    >
+                      {formatCurrency(Math.abs(data.totals.totalProfit))}
+                    </p>
+                    {data.totals.totalRevenue > 0 && (
+                      <p className={`text-xs mt-2 font-bold ${data.totals.totalProfit >= 0 ? "text-[#1a1a3e]" : "text-white"}`}>
+                        Margin: {((data.totals.totalProfit / data.totals.totalRevenue) * 100).toFixed(1)}%
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Charts */}
+                {chartData.length > 0 && (
+                  <div className="space-y-8">
+                    {/* Revenue and Profit Line Chart */}
+                    <div className="bg-white border-4 border-black p-6 pixel-shadow-sm">
+                      <h2 className="font-bold text-2xl text-[#1a1a3e] mb-4 flex items-center gap-2">
+                        <BarChart3 className="h-6 w-6" />
+                        REVENUE & PROFIT OVER TIME
+                      </h2>
+                      <ChartContainer config={chartConfig} className="h-[400px]">
+                        <LineChart data={chartData}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="date" />
+                          <YAxis tickFormatter={(value) => value >= 1000 ? `$${(value / 1000).toFixed(1)}k` : `$${value}`} />
+                          <ChartTooltip content={<ChartTooltipContent />} />
+                          <Legend />
+                          <Line
+                            type="monotone"
+                            dataKey="revenue"
+                            stroke={chartConfig.revenue.color}
+                            strokeWidth={3}
+                            name="Revenue"
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="profit"
+                            stroke={chartConfig.profit.color}
+                            strokeWidth={3}
+                            name="Profit"
+                          />
+                        </LineChart>
+                      </ChartContainer>
+                    </div>
+
+                    {/* Revenue vs Cost Bar Chart */}
+                    <div className="bg-white border-4 border-black p-6 pixel-shadow-sm">
+                      <h2 className="font-bold text-2xl text-[#1a1a3e] mb-4">REVENUE VS COST</h2>
+                      <ChartContainer config={chartConfig} className="h-[400px]">
+                        <BarChart data={chartData}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="date" />
+                          <YAxis tickFormatter={(value) => value >= 1000 ? `$${(value / 1000).toFixed(1)}k` : `$${value}`} />
+                          <ChartTooltip content={<ChartTooltipContent />} />
+                          <Legend />
+                          <Bar dataKey="revenue" fill={chartConfig.revenue.color} name="Revenue" />
+                          <Bar dataKey="cost" fill={chartConfig.cost.color} name="Cost" />
+                        </BarChart>
+                      </ChartContainer>
+                    </div>
+                  </div>
                 )}
-              </div>
-            </div>
-
-            {/* Charts */}
-            {chartData.length > 0 && (
-              <div className="space-y-8">
-                {/* Revenue and Profit Line Chart */}
-                <div className="bg-white border-4 border-black p-6 pixel-shadow-sm">
-                  <h2 className="font-bold text-2xl text-[#1a1a3e] mb-4 flex items-center gap-2">
-                    <BarChart3 className="h-6 w-6" />
-                    REVENUE & PROFIT OVER TIME
-                  </h2>
-                  <ChartContainer config={chartConfig} className="h-[400px]">
-                    <LineChart data={chartData}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="date" />
-                      <YAxis tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`} />
-                      <ChartTooltip content={<ChartTooltipContent />} />
-                      <Legend />
-                      <Line
-                        type="monotone"
-                        dataKey="revenue"
-                        stroke={chartConfig.revenue.color}
-                        strokeWidth={3}
-                        name="Revenue"
-                      />
-                      <Line
-                        type="monotone"
-                        dataKey="profit"
-                        stroke={chartConfig.profit.color}
-                        strokeWidth={3}
-                        name="Profit"
-                      />
-                    </LineChart>
-                  </ChartContainer>
-                </div>
-
-                {/* Revenue vs Cost Bar Chart */}
-                <div className="bg-white border-4 border-black p-6 pixel-shadow-sm">
-                  <h2 className="font-bold text-2xl text-[#1a1a3e] mb-4">REVENUE VS COST</h2>
-                  <ChartContainer config={chartConfig} className="h-[400px]">
-                    <BarChart data={chartData}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="date" />
-                      <YAxis tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`} />
-                      <ChartTooltip content={<ChartTooltipContent />} />
-                      <Legend />
-                      <Bar dataKey="revenue" fill={chartConfig.revenue.color} name="Revenue" />
-                      <Bar dataKey="cost" fill={chartConfig.cost.color} name="Cost" />
-                    </BarChart>
-                  </ChartContainer>
-                </div>
-              </div>
-            )}
               </>
             )}
           </>
