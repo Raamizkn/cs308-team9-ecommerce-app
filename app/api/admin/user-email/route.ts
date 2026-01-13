@@ -15,22 +15,20 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    // Check if user is a product manager OR support agent
-    const { data: productManagerData, error: productManagerError } = await supabase
-      .from("product_managers")
-      .select("uid")
-      .eq("uid", user.id)
-      .maybeSingle()
+    // Check if user is a product manager, support agent, OR sales manager
+    const [productManagerResult, supportAgentResult, salesManagerResult] = await Promise.all([
+      supabase.from("product_managers").select("uid").eq("uid", user.id).maybeSingle(),
+      supabase.from("support_agents").select("uid").eq("uid", user.id).maybeSingle(),
+      supabase.from("sales_managers").select("uid").eq("uid", user.id).maybeSingle(),
+    ])
 
-    const { data: supportAgentData, error: supportAgentError } = await supabase
-      .from("support_agents")
-      .select("uid")
-      .eq("uid", user.id)
-      .maybeSingle()
+    const isProductManager = productManagerResult.data !== null
+    const isSupportAgent = supportAgentResult.data !== null
+    const isSalesManager = salesManagerResult.data !== null
 
-    // Allow if user is either a product manager or support agent
-    if ((productManagerError || !productManagerData) && (supportAgentError || !supportAgentData)) {
-      return NextResponse.json({ error: "Forbidden: Product manager or Support agent access required" }, { status: 403 })
+    // Allow if user is any of these roles
+    if (!isProductManager && !isSupportAgent && !isSalesManager) {
+      return NextResponse.json({ error: "Forbidden: Product manager, Support agent, or Sales manager access required" }, { status: 403 })
     }
 
     const { searchParams } = new URL(request.url)

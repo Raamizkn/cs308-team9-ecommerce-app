@@ -11,13 +11,17 @@ import { useToast } from "@/hooks/use-toast"
 import { ArrowLeft, FileText, Download, Printer, Search, Calendar } from "lucide-react"
 
 interface Invoice {
-  order_id: number
+  order_id: number | string
   customer_name: string
   customer_email: string
   order_date: string
   total_amount: number
   order_status: string
   items: InvoiceItem[]
+  subtotal?: number
+  tax_amount?: number
+  shipping_address?: string
+  payment_method?: string
 }
 
 interface InvoiceItem {
@@ -100,7 +104,11 @@ export default function InvoicesPage() {
           id,
           created_at,
           total,
+          subtotal,
+          tax_amount,
           status,
+          shipping_address,
+          payment_method,
           user_id
         `)
         .gte("created_at", new Date(startDate).toISOString())
@@ -125,9 +133,27 @@ export default function InvoicesPage() {
           .in("uid", userIds)
         
         if (profilesData) {
+          // Initialize with names
           profilesData.forEach((profile: any) => {
             profilesMap[profile.uid] = { name: profile.name || "Unknown Customer", email: "No Email" }
           })
+          
+          // Fetch emails for all users using admin API
+          const emailPromises = userIds.map(async (userId) => {
+            try {
+              const response = await fetch(`/api/admin/user-email?user_id=${userId}`)
+              if (response.ok) {
+                const data = await response.json()
+                if (profilesMap[userId]) {
+                  profilesMap[userId].email = data.email || "No Email"
+                }
+              }
+            } catch (error) {
+              console.error(`[Group9] Error fetching email for ${userId}:`, error)
+            }
+          })
+          
+          await Promise.all(emailPromises)
         }
       }
 
@@ -155,6 +181,10 @@ export default function InvoicesPage() {
           // Get customer data from profiles map
           const customerName = profilesMap[order.user_id]?.name || "Unknown Customer"
           const customerEmail = profilesMap[order.user_id]?.email || "No Email"
+          
+          // Calculate subtotal from items if not available
+          const subtotal = order.subtotal || items.reduce((sum, item) => sum + item.total_price, 0)
+          const tax = order.tax_amount || (order.total - subtotal)
 
           return {
             order_id: order.id,
@@ -164,6 +194,10 @@ export default function InvoicesPage() {
             total_amount: order.total,
             order_status: order.status,
             items,
+            subtotal,
+            tax_amount: tax,
+            shipping_address: order.shipping_address || "N/A",
+            payment_method: order.payment_method || "Credit Card",
           }
         })
       )
@@ -237,136 +271,282 @@ export default function InvoicesPage() {
   }
 
   const generateInvoiceHTML = (invoice: Invoice) => {
+    const orderDate = new Date(invoice.order_date)
+    const formattedDate = orderDate.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    })
+    
+    // Use subtotal and tax from invoice, or calculate from items
+    const subtotal = invoice.subtotal || invoice.items.reduce((sum, item) => sum + item.total_price, 0)
+    const tax = invoice.tax_amount || (invoice.total_amount - subtotal)
+    const taxPercent = subtotal > 0 ? ((tax / subtotal) * 100).toFixed(0) : '0'
+    const shipping = 0 // No shipping cost
+    const invoiceId = typeof invoice.order_id === 'string' ? invoice.order_id.substring(0, 8).toUpperCase() : invoice.order_id.toString().substring(0, 8).toUpperCase()
+    const shippingAddress = invoice.shipping_address || "N/A"
+    const paymentMethod = invoice.payment_method || "Credit Card"
+    
     return `
       <!DOCTYPE html>
       <html>
         <head>
-          <title>Invoice #${invoice.order_id}</title>
+          <title>Invoice #${invoiceId}</title>
           <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
             body {
-              font-family: Arial, sans-serif;
-              max-width: 800px;
-              margin: 40px auto;
-              padding: 20px;
-              color: #000;
+              font-family: 'Helvetica', Arial, sans-serif;
+              background: #ffffff;
+              color: #1a1a3e;
+              padding: 40px;
+              font-size: 10px;
+              line-height: 1.4;
             }
             .header {
-              text-align: center;
-              margin-bottom: 40px;
-              border-bottom: 3px solid #000;
-              padding-bottom: 20px;
-            }
-            .invoice-info {
-              display: grid;
-              grid-template-columns: 1fr 1fr;
-              gap: 20px;
               margin-bottom: 30px;
+              border-bottom: 4px solid #1a1a3e;
+              padding-bottom: 20px;
+              display: flex;
+              justify-content: space-between;
+              align-items: flex-start;
             }
-            .info-section {
-              padding: 15px;
-              border: 2px solid #000;
-            }
-            .info-label {
+            .logo-section { flex: 1; }
+            .logo {
+              font-size: 32px;
               font-weight: bold;
-              font-size: 12px;
-              color: #666;
+              color: #1a1a3e;
               margin-bottom: 5px;
             }
-            .info-value {
-              font-size: 14px;
-              color: #000;
-            }
-            table {
-              width: 100%;
-              border-collapse: collapse;
-              margin: 20px 0;
-            }
-            th {
-              background: #4ecdc4;
-              padding: 12px;
-              text-align: left;
+            .tagline {
+              font-size: 10px;
+              color: #5b3a8f;
               font-weight: bold;
-              border: 2px solid #000;
             }
-            td {
+            .invoice-info-section { text-align: right; }
+            .invoice-number {
+              font-weight: bold;
+              font-size: 10px;
+              color: #1a1a3e;
+              margin-bottom: 4px;
+            }
+            .invoice-date {
+              font-size: 10px;
+              color: #1a1a3e;
+              margin-bottom: 8px;
+            }
+            .status-badge {
+              background: #6bcf7f;
+              padding: 5px;
+              border-radius: 3px;
+              display: inline-block;
+            }
+            .status-text {
+              font-size: 9px;
+              font-weight: bold;
+              color: #1a1a3e;
+              text-align: center;
+            }
+            .row {
+              display: flex;
+              justify-content: space-between;
+              margin-bottom: 20px;
+              gap: 20px;
+            }
+            .column { flex: 1; }
+            .section-title {
+              font-size: 12px;
+              font-weight: bold;
+              color: #5b3a8f;
+              margin-bottom: 8px;
+              text-transform: uppercase;
+            }
+            .text {
+              font-size: 10px;
+              color: #1a1a3e;
+              margin-bottom: 4px;
+            }
+            .text-bold {
+              font-size: 10px;
+              font-weight: bold;
+              color: #1a1a3e;
+              margin-bottom: 4px;
+            }
+            .table { margin-top: 20px; margin-bottom: 20px; }
+            .table-header {
+              background: #5b3a8f;
               padding: 10px;
-              border: 1px solid #000;
+              border-top-left-radius: 4px;
+              border-top-right-radius: 4px;
+              display: flex;
+            }
+            .table-header-text {
+              font-size: 10px;
+              font-weight: bold;
+              color: #ffffff;
+            }
+            .col1 { width: 10%; }
+            .col2 { width: 40%; }
+            .col3 { width: 15%; text-align: center; }
+            .col4 { width: 15%; text-align: right; }
+            .col5 { width: 20%; text-align: right; }
+            .table-row {
+              display: flex;
+              border-bottom: 1px solid #e9ecef;
+              padding: 10px;
+              min-height: 40px;
+              align-items: center;
+            }
+            .table-row-alt { background: #f8f9fa; }
+            .summary-box {
+              margin-top: 20px;
+              padding: 15px;
+              background: #4ecdc4;
+              border-radius: 4px;
+              width: 50%;
+              margin-left: auto;
+            }
+            .summary-row {
+              display: flex;
+              justify-content: space-between;
+              margin-bottom: 8px;
+            }
+            .summary-label {
+              font-size: 11px;
+              font-weight: bold;
+              color: #1a1a3e;
+            }
+            .summary-value {
+              font-size: 11px;
+              color: #1a1a3e;
             }
             .total-row {
-              background: #f8f9fa;
+              display: flex;
+              justify-content: space-between;
+              margin-top: 8px;
+              padding-top: 8px;
+              border-top: 2px solid #1a1a3e;
+            }
+            .total-label {
+              font-size: 14px;
               font-weight: bold;
-              font-size: 16px;
+              color: #1a1a3e;
+            }
+            .total-value {
+              font-size: 14px;
+              font-weight: bold;
+              color: #1a1a3e;
+            }
+            .thank-you {
+              margin-top: 30px;
+              padding: 20px;
+              background: #ffb347;
+              border-radius: 4px;
+              text-align: center;
+            }
+            .thank-you-text {
+              font-size: 14px;
+              font-weight: bold;
+              color: #1a1a3e;
             }
             .footer {
-              margin-top: 40px;
+              position: absolute;
+              bottom: 40px;
+              left: 40px;
+              right: 40px;
+              border-top: 2px solid #e9ecef;
+              padding-top: 15px;
               text-align: center;
-              padding-top: 20px;
-              border-top: 2px solid #000;
-              font-size: 12px;
-              color: #666;
+            }
+            .footer-text {
+              font-size: 9px;
+              color: #6c757d;
+              margin-bottom: 3px;
             }
             @media print {
-              body { margin: 0; }
+              body { margin: 0; padding: 40px; }
             }
           </style>
         </head>
         <body>
           <div class="header">
-            <h1 style="margin: 0; font-size: 36px;">PIXEL VAULT</h1>
-            <p style="margin: 5px 0; font-size: 18px;">INVOICE</p>
-          </div>
-          
-          <div class="invoice-info">
-            <div class="info-section">
-              <div class="info-label">INVOICE NUMBER</div>
-              <div class="info-value">#${invoice.order_id.toString().padStart(6, "0")}</div>
+            <div class="logo-section">
+              <div class="logo">◾ PIXELVAULT</div>
+              <div class="tagline">Retro Gaming Store</div>
             </div>
-            <div class="info-section">
-              <div class="info-label">DATE</div>
-              <div class="info-value">${new Date(invoice.order_date).toLocaleDateString()}</div>
-            </div>
-            <div class="info-section">
-              <div class="info-label">CUSTOMER NAME</div>
-              <div class="info-value">${invoice.customer_name}</div>
-            </div>
-            <div class="info-section">
-              <div class="info-label">EMAIL</div>
-              <div class="info-value">${invoice.customer_email}</div>
+            <div class="invoice-info-section">
+              <div class="invoice-number">Invoice #${invoiceId}</div>
+              <div class="invoice-date">${formattedDate}</div>
+              <div class="status-badge">
+                <div class="status-text">${invoice.order_status.toUpperCase()}</div>
+              </div>
             </div>
           </div>
-
-          <table>
-            <thead>
-              <tr>
-                <th>PRODUCT</th>
-                <th>QUANTITY</th>
-                <th>UNIT PRICE</th>
-                <th>TOTAL</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${invoice.items
-                .map(
-                  (item) => `
-                <tr>
-                  <td>${item.product_name}</td>
-                  <td>${item.quantity}</td>
-                  <td>$${item.unit_price.toFixed(2)}</td>
-                  <td>$${item.total_price.toFixed(2)}</td>
-                </tr>
-              `
-                )
-                .join("")}
-              <tr class="total-row">
-                <td colspan="3" style="text-align: right;">TOTAL AMOUNT:</td>
-                <td>$${invoice.total_amount.toFixed(2)}</td>
-              </tr>
-            </tbody>
-          </table>
-
+          <div class="row">
+            <div class="column">
+              <div class="section-title">Bill To:</div>
+              <div class="text-bold">${invoice.customer_name}</div>
+              <div class="text">${invoice.customer_email}</div>
+            </div>
+            <div class="column">
+              <div class="section-title">Ship To:</div>
+              <div class="text">${shippingAddress}</div>
+            </div>
+            <div class="column">
+              <div class="section-title">Payment:</div>
+              <div class="text">${paymentMethod}</div>
+              <div class="text">Order Date: ${formattedDate}</div>
+            </div>
+          </div>
+          <div class="table">
+            <div class="table-header">
+              <div class="table-header-text col1">#</div>
+              <div class="table-header-text col2">ITEM</div>
+              <div class="table-header-text col3">QTY</div>
+              <div class="table-header-text col4">PRICE</div>
+              <div class="table-header-text col5">TOTAL</div>
+            </div>
+            ${invoice.items.map((item, index) => `
+              <div class="table-row ${index % 2 === 0 ? 'table-row-alt' : ''}">
+                <div class="text col1">${index + 1}</div>
+                <div class="text col2">${item.product_name}</div>
+                <div class="text col3">${item.quantity}</div>
+                <div class="text col4">$${item.unit_price.toFixed(2)}</div>
+                <div class="text-bold col5">$${item.total_price.toFixed(2)}</div>
+              </div>
+            `).join('')}
+          </div>
+          <div class="summary-box">
+            <div class="summary-row">
+              <div class="summary-label">Subtotal:</div>
+              <div class="summary-value">$${subtotal.toFixed(2)}</div>
+            </div>
+            ${tax > 0 ? `
+              <div class="summary-row">
+                <div class="summary-label">Tax (${taxPercent}%):</div>
+                <div class="summary-value">$${tax.toFixed(2)}</div>
+              </div>
+            ` : ''}
+            ${shipping > 0 ? `
+              <div class="summary-row">
+                <div class="summary-label">Shipping:</div>
+                <div class="summary-value">$${shipping.toFixed(2)}</div>
+              </div>
+            ` : ''}
+            <div class="total-row">
+              <div class="total-label">TOTAL:</div>
+              <div class="total-value">$${invoice.total_amount.toFixed(2)}</div>
+            </div>
+          </div>
+          <div class="thank-you">
+            <div class="thank-you-text">THANK YOU FOR YOUR PURCHASE!</div>
+            <div class="text" style="text-align: center; margin-top: 5px;">
+              Questions? Contact us at support@pixelvault.com
+            </div>
+          </div>
           <div class="footer">
-            <p>Thank you for your business!</p>
-            <p>Pixel Vault - Your Digital Marketplace</p>
+            <div class="footer-text">PixelVault - Retro Gaming Store</div>
+            <div class="footer-text">Email: support@pixelvault.com | Web: www.pixelvault.com</div>
+            <div class="footer-text">This is a computer-generated invoice. No signature required.</div>
           </div>
         </body>
       </html>
