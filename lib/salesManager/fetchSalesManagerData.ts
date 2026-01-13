@@ -68,8 +68,6 @@ export async function fetchSalesManagerOrders(): Promise<SalesManagerOrder[]> {
           created_at,
           total,
           status,
-          customer_name,
-          customer_email,
           user_id
         `
       )
@@ -77,9 +75,9 @@ export async function fetchSalesManagerOrders(): Promise<SalesManagerOrder[]> {
 
     if (ordersError) throw ordersError
 
-    // Fetch customer profiles for orders that don't have customer_name/customer_email
+    // Fetch customer profiles for all orders with user_id
     const userIds = [...new Set((ordersData || [])
-      .filter((o: any) => o.user_id && !o.customer_name)
+      .filter((o: any) => o.user_id)
       .map((o: any) => o.user_id))]
     
     let profilesMap: Record<string, { name: string; email: string }> = {}
@@ -119,10 +117,9 @@ export async function fetchSalesManagerOrders(): Promise<SalesManagerOrder[]> {
           total_price: item.quantity * item.price,
         }))
 
-        // Use customer_name/customer_email from orders table if available,
-        // otherwise fall back to profiles data
-        const customerName = order.customer_name || profilesMap[order.user_id]?.name || "Unknown Customer"
-        const customerEmail = order.customer_email || profilesMap[order.user_id]?.email || "No Email"
+        // Get customer data from profiles map
+        const customerName = profilesMap[order.user_id]?.name || "Unknown Customer"
+        const customerEmail = profilesMap[order.user_id]?.email || "No Email"
 
         return {
           order_id: order.id,
