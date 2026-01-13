@@ -324,43 +324,58 @@ export default function AdminChatPage() {
 
     setUploading(true)
     try {
-      // Convert files to data URLs for immediate display (especially images)
+      // Convert ALL files to data URLs so they persist in the database
+      // Blob URLs expire when the page refreshes, but data URLs persist
       const filePromises = attachments.map(async (file) => {
-        // For images, create a data URL so they can be displayed immediately
-        if (file.type && file.type.startsWith('image/')) {
-          return new Promise<{ name: string; type: string; size: number; url: string }>((resolve) => {
-            const reader = new FileReader()
-            reader.onload = (e) => {
-              resolve({
-                name: file.name,
-                type: file.type,
-                size: file.size,
-                url: e.target?.result as string, // data:image/png;base64,...
-              })
-            }
-            reader.onerror = () => {
-              // Fallback to blob URL if FileReader fails
-              resolve({
-                name: file.name,
-                type: file.type,
-                size: file.size,
-                url: URL.createObjectURL(file),
-              })
-            }
-            reader.readAsDataURL(file)
-          })
-        } else {
-          // For non-images, create a blob URL for download
-          return {
+        return new Promise<{ name: string; type: string; size: number; url: string }>((resolve, reject) => {
+          const reader = new FileReader()
+          reader.onload = (e) => {
+            resolve({
         name: file.name,
         type: file.type,
         size: file.size,
-            url: URL.createObjectURL(file), // blob:http://...
+              url: e.target?.result as string, // data:image/png;base64,... or data:application/pdf;base64,...
+            })
           }
-        }
+          reader.onerror = () => {
+            // If FileReader fails, reject the promise
+            reject(new Error(`Failed to read file: ${file.name}`))
+          }
+          reader.readAsDataURL(file)
+        })
       })
 
-      return await Promise.all(filePromises)
+      // Use Promise.allSettled to handle individual file failures
+      const results = await Promise.allSettled(filePromises)
+      const successfulFiles = results
+        .filter((result): result is PromiseFulfilledResult<{ name: string; type: string; size: number; url: string }> => 
+          result.status === 'fulfilled'
+        )
+        .map(result => result.value)
+      
+      const failedFiles = results
+        .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+        .map(result => result.reason?.message || 'Unknown error')
+
+      if (failedFiles.length > 0) {
+        console.error("[Group9] Some files failed to upload:", failedFiles)
+        if (successfulFiles.length === 0) {
+          toast({
+            title: "Upload failed",
+            description: "Failed to process files. Please try again.",
+            variant: "destructive",
+          })
+          return []
+        } else {
+          toast({
+            title: "Partial upload",
+            description: `${failedFiles.length} file(s) failed to upload, but ${successfulFiles.length} file(s) were processed.`,
+            variant: "default",
+          })
+        }
+      }
+
+      return successfulFiles
     } catch (error) {
       console.error("[Group9] Error uploading files:", error)
       toast({
