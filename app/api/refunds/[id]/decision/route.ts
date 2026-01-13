@@ -93,12 +93,14 @@ export async function POST(
             const customerId = order?.user_id
 
             if (customerId && order && product) {
-                // Fetch customer email using admin client
+                // Fetch customer email - MUST always find it since email is required for account creation
                 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
                 let customerEmail: string | null = null
                 let customerName: string = "Customer"
 
-                if (serviceRoleKey) {
+                if (!serviceRoleKey) {
+                    console.error("[Group9] ❌ SUPABASE_SERVICE_ROLE_KEY is not set - cannot fetch customer email")
+                } else {
                     try {
                         const adminClient = createClient(
                             process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -120,24 +122,60 @@ export async function POST(
 
                         if (profileData?.name) {
                             customerName = profileData.name
+                            console.log(`[Group9] Found customer name: ${customerName}`)
                         }
 
-                        // Get customer email from auth.users
+                        // Get customer email from auth.users (REQUIRED - all accounts have email)
                         const { data: authUserData, error: authUserError } = await adminClient.auth.admin.getUserById(customerId)
                         if (!authUserError && authUserData?.user?.email) {
                             customerEmail = authUserData.user.email
+                            console.log(`[Group9] ✅ Found customer email from auth.users: ${customerEmail}`)
+                        } else {
+                            console.error(`[Group9] ❌ Error fetching customer email from auth.users: ${authUserError?.message || 'Email not found'}`)
+                            
+                            // Fallback: Try using the admin API endpoint
+                            try {
+                                const emailResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/admin/user-email?user_id=${customerId}`)
+                                if (emailResponse.ok) {
+                                    const emailData = await emailResponse.json()
+                                    if (emailData.email) {
+                                        customerEmail = emailData.email
+                                        console.log(`[Group9] ✅ Found customer email via admin API: ${customerEmail}`)
+                                    }
+                                }
+                            } catch (apiError) {
+                                console.error("[Group9] ❌ Error fetching email via admin API:", apiError)
+                            }
                         }
                     } catch (emailError) {
-                        console.error("[Group9] Error fetching customer email for refund approval:", emailError)
+                        console.error("[Group9] ❌ Error fetching customer email for refund approval:", emailError)
+                        
+                        // Last resort: Try admin API endpoint
+                        if (!customerEmail) {
+                            try {
+                                const emailResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/admin/user-email?user_id=${customerId}`)
+                                if (emailResponse.ok) {
+                                    const emailData = await emailResponse.json()
+                                    if (emailData.email) {
+                                        customerEmail = emailData.email
+                                        console.log(`[Group9] ✅ Found customer email via admin API (fallback): ${customerEmail}`)
+                                    }
+                                }
+                            } catch (apiError) {
+                                console.error("[Group9] ❌ Error fetching email via admin API (fallback):", apiError)
+                            }
+                        }
                     }
                 }
 
                 // Calculate refund amount including 20% tax
                 // Tax is 20%, so multiply by 1.2 to include tax in refund
                 const refundAmount = parseFloat(orderItem.price || 0) * (refundRequest.quantity || 0) * 1.2
+                console.log(`[Group9] Calculated refund amount: $${refundAmount.toFixed(2)} (price: $${orderItem.price}, qty: ${refundRequest.quantity})`)
 
-                // Send email if we have the email address
+                // ALWAYS send email - customer email MUST exist (required for account creation)
                 if (customerEmail) {
+                    console.log(`[Group9] 📧 Attempting to send refund approval email to ${customerEmail} for refund ${id}`)
                     sendRefundApprovalEmail({
                         userEmail: customerEmail,
                         userName: customerName,
@@ -150,14 +188,19 @@ export async function POST(
                     })
                         .then((sent) => {
                             if (sent) {
-                                console.log(`[Group9] Refund approval email sent to ${customerEmail} for refund ${id}`)
+                                console.log(`[Group9] ✅ Refund approval email sent successfully to ${customerEmail} for refund ${id}`)
+                            } else {
+                                console.error(`[Group9] ❌ Refund approval email failed to send to ${customerEmail} for refund ${id}`)
                             }
                         })
                         .catch((error) => {
-                            console.error("[Group9] Error sending refund approval email:", error)
+                            console.error("[Group9] ❌ Error sending refund approval email:", error)
                         })
                 } else {
-                    console.log(`[Group9] Skipping refund approval email for refund ${id} - customer email not found`)
+                    // This should NEVER happen - all accounts require email
+                    console.error(`[Group9] ❌ CRITICAL: Customer email not found for refund ${id} (customerId: ${customerId})`)
+                    console.error(`[Group9] This should not happen - all accounts require email. Check auth.users table.`)
+                    // Still log the refund approval succeeded, but email failed
                 }
             }
         }

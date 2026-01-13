@@ -66,17 +66,17 @@ export function CartProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const loadCart = async () => {
       setIsLoading(true)
-      const savedCart = localStorage.getItem("pixelvault-cart")
-      if (savedCart) {
-        try {
+    const savedCart = localStorage.getItem("pixelvault-cart")
+    if (savedCart) {
+      try {
           const parsedCart = JSON.parse(savedCart)
           setItems(parsedCart)
           // Sync to database if user is logged in
           await syncCartToDatabase(parsedCart)
-        } catch (error) {
-          console.error("Error loading cart:", error)
-        }
+      } catch (error) {
+        console.error("Error loading cart:", error)
       }
+    }
       setIsLoading(false)
     }
     loadCart()

@@ -14,13 +14,16 @@ interface RefundApprovalEmailData {
 }
 
 export async function sendRefundApprovalEmail(data: RefundApprovalEmailData): Promise<boolean> {
-  const n8nWebhookUrl = process.env.N8N_REFUND_APPROVAL_WEBHOOK_URL || process.env.N8N_WEBHOOK_URL
+  // ALWAYS use the refund-specific webhook URL - never fall back to invoice webhook
+  const n8nWebhookUrl = process.env.N8N_REFUND_APPROVAL_WEBHOOK_URL
 
-  console.log(`[Group9] sendRefundApprovalEmail called - webhook URL set: ${!!n8nWebhookUrl}`)
-  console.log(`[Group9] Using webhook URL: ${n8nWebhookUrl || 'NOT SET'}`)
+  console.log(`[Group9] sendRefundApprovalEmail called`)
+  console.log(`[Group9] N8N_REFUND_APPROVAL_WEBHOOK_URL set: ${!!n8nWebhookUrl}`)
+  console.log(`[Group9] Using refund webhook URL: ${n8nWebhookUrl || 'NOT SET'}`)
 
   if (!n8nWebhookUrl) {
-    console.error("[Group9] ❌ N8N_REFUND_APPROVAL_WEBHOOK_URL or N8N_WEBHOOK_URL environment variable is not set")
+    console.error("[Group9] ❌ N8N_REFUND_APPROVAL_WEBHOOK_URL environment variable is not set")
+    console.error("[Group9] ❌ Refund emails require the refund-specific webhook URL - cannot use invoice webhook")
     return false
   }
 
