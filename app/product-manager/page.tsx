@@ -36,6 +36,8 @@ interface DeliveryRecord {
   dueDate: string
   orderId?: string // Store actual order ID for status updates
   orderItemId?: string // Store order item ID
+  customerId: string
+  productId: number
 }
 
 interface InvoiceRecord {
@@ -233,6 +235,7 @@ export default function ProductManagerDashboardPage() {
             id,
             quantity,
             price,
+            product_id,
             products_belong_to (
               name
             )
@@ -298,6 +301,8 @@ export default function ProductManagerDashboardPage() {
             dueDate: dueDate.toISOString().split('T')[0],
             orderId: order.id, // Store actual order ID for status updates
             orderItemId: item.id, // Store order item ID
+            customerId: order.user_id,
+            productId: item.product_id,
           }
         })
       })
@@ -1294,7 +1299,10 @@ export default function ProductManagerDashboardPage() {
                         <p className="text-sm text-[#6c757d] font-mono">
                           Delivery #{delivery.id} • Due {new Date(delivery.dueDate).toLocaleDateString()}
                         </p>
-                        <p className="text-sm text-[#6c757d]">Customer: {delivery.customer}</p>
+                        <p className="text-sm text-[#6c757d]">Customer Name: {delivery.customer}</p>
+                        <p className="text-sm text-[#6c757d]">Customer ID: {delivery.customerId}</p>
+                        <p className="text-sm text-[#6c757d]">Product ID: {delivery.productId}</p>
+                        <p className="text-sm text-[#6c757d]">Quantity: {delivery.quantity}</p>
                         <p className="text-sm text-[#6c757d]">Address: {delivery.address}</p>
                         <p className="text-sm font-bold text-[#1a1a3e] mt-1">Total: ${delivery.total.toFixed(2)}</p>
                       </div>
