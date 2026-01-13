@@ -142,8 +142,8 @@ export default function RefundRequestsPage() {
 
         const customerName = order.user_id ? (profilesMap[order.user_id] || null) : null
 
-        // Calculate refund amount
-        const refundAmount = parseFloat(orderItem.price || 0) * (refund.quantity || 0)
+        // Calculate refund amount (including 20% tax)
+        const refundAmount = (parseFloat(orderItem.price || 0) * (refund.quantity || 0)) * 1.20
 
         return {
           id: refund.id,
@@ -406,7 +406,7 @@ export default function RefundRequestsPage() {
                         <div className="font-[family-name:var(--font-pixel)] text-3xl text-[#1a1a3e]">
                           ${refund.refund_amount.toFixed(2)}
                         </div>
-                        <div className="text-xs text-[#6c757d]">Refund Amount</div>
+                        <div className="text-xs text-[#6c757d]">Refund Amount (inc. Tax)</div>
                       </div>
                     </div>
 
