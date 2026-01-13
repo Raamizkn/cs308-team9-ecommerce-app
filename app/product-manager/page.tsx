@@ -32,7 +32,7 @@ interface DeliveryRecord {
   product: string
   quantity: number
   total: number
-  status: "packing" | "in-transit" | "delivered"
+  status: "processing" | "in-transit" | "delivered"
   dueDate: string
   orderId?: string // Store actual order ID for status updates
   orderItemId?: string // Store order item ID
@@ -276,13 +276,13 @@ export default function ProductManagerDashboardPage() {
         // Map each order item to a delivery record
         return (order.order_items || []).map((item: any, index: number) => {
           // Map order status to delivery status
-          let deliveryStatus: "packing" | "in-transit" | "delivered" = "packing"
+          let deliveryStatus: "processing" | "in-transit" | "delivered" = "processing"
           if (order.status === "delivered") {
             deliveryStatus = "delivered"
           } else if (order.status === "in-transit") {
             deliveryStatus = "in-transit"
           } else {
-            deliveryStatus = "packing" // Maps to 'processing' in DB
+            deliveryStatus = "processing" // Maps to 'processing' in DB
           }
 
           // Calculate due date (7 days from order creation)
@@ -807,7 +807,7 @@ export default function ProductManagerDashboardPage() {
       } else if (status === "in-transit") {
         orderStatus = "in-transit"  // Fixed: was "shipped" which is not a valid status
       } else {
-        // "packing" maps to "processing"
+        // "processing" matches DB
         orderStatus = "processing"
       }
 
@@ -1312,7 +1312,7 @@ export default function ProductManagerDashboardPage() {
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="packing">Packing</SelectItem>
+                            <SelectItem value="processing">Processing</SelectItem>
                             <SelectItem value="in-transit">In Transit</SelectItem>
                             <SelectItem
                               value="delivered"
