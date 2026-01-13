@@ -335,19 +335,20 @@ export function ChatWidget({ initialOpen = false }: { initialOpen?: boolean }) {
                               }
 
                               try {
-                                let blob: Blob
                                 let downloadUrl: string
+                                let shouldRevoke = false
 
                                 if (file.url.startsWith('data:')) {
-                                  // Convert data URL to blob
+                                  // Convert data URL to blob URL for download
                                   const response = await fetch(file.url)
-                                  blob = await response.blob()
+                                  const blob = await response.blob()
                                   downloadUrl = URL.createObjectURL(blob)
+                                  shouldRevoke = true
                                 } else if (file.url.startsWith('blob:')) {
-                                  // For blob URLs, fetch and create new blob
-                                  const response = await fetch(file.url)
-                                  blob = await response.blob()
-                                  downloadUrl = URL.createObjectURL(blob)
+                                  // Blob URLs can be used directly - they're already valid URLs
+                                  // However, if they're expired (from database), we need to handle that
+                                  downloadUrl = file.url
+                                  // Don't revoke - it might be managed elsewhere
                                 } else {
                                   // For HTTP URLs, use directly
                                   downloadUrl = file.url
@@ -362,14 +363,14 @@ export function ChatWidget({ initialOpen = false }: { initialOpen?: boolean }) {
                                 document.body.removeChild(link)
 
                                 // Clean up blob URL if we created one
-                                if (downloadUrl.startsWith('blob:')) {
+                                if (shouldRevoke && downloadUrl.startsWith('blob:')) {
                                   setTimeout(() => URL.revokeObjectURL(downloadUrl), 100)
                                 }
                               } catch (error) {
                                 console.error("[Group9] Error downloading file:", error)
                                 toast({
                                   title: "Download failed",
-                                  description: "Failed to download file. Please try again.",
+                                  description: "Failed to download file. The file may have expired or is no longer available.",
                                   variant: "destructive",
                                 })
                               }

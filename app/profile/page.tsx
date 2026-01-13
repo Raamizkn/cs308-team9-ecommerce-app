@@ -437,6 +437,10 @@ export default function ProfilePage() {
                   <span className="font-semibold text-[#6c757d]">Email</span>
                   <span className="font-bold break-all">{user?.email}</span>
                 </div>
+                <div className="flex items-start justify-between gap-4">
+                  <span className="font-semibold text-[#6c757d]">Customer ID</span>
+                  <span className="font-bold break-all text-xs font-mono">{user?.id || "N/A"}</span>
+                </div>
                 <div>
                   <span className="font-semibold text-[#6c757d]">Home address</span>
                   <div className="mt-2 grid grid-cols-1 gap-2">
