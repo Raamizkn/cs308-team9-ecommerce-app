@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic"
 import { useState, useEffect } from "react"
+import { getSupabaseBrowserClient } from "@/lib/supabase/client"
 
 const ChatWidget = dynamic(
   () => import("@/components/chat-widget").then((mod) => mod.ChatWidget),
@@ -12,16 +13,52 @@ const ChatWidget = dynamic(
 
 export function ChatLoader() {
   const [loaded, setLoaded] = useState(false)
+  const [isSupportAgent, setIsSupportAgent] = useState(false)
+  const [checking, setChecking] = useState(true)
 
   useEffect(() => {
+    checkIfSupportAgent()
+  }, [])
+
+  const checkIfSupportAgent = async () => {
+    try {
+      const supabase = getSupabaseBrowserClient()
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      
+      if (user?.id) {
+        const { data } = await supabase
+          .from("support_agents")
+          .select("uid")
+          .eq("uid", user.id)
+          .maybeSingle()
+        setIsSupportAgent(!!data)
+      }
+    } catch (error) {
+      console.error("[Group9] Error checking support agent:", error)
+    } finally {
+      setChecking(false)
+    }
+  }
+
+  useEffect(() => {
+    if (!isSupportAgent && !checking) {
     const t = setTimeout(() => {
       // Attempt to prefetch the chat bundle in the background after idle.
       ;(ChatWidget as any).preload?.()
     }, 5000)
 
     return () => clearTimeout(t)
-  }, [])
+    }
+  }, [isSupportAgent, checking])
 
+  // Don't show chat widget for support agents only
+  if (!checking && isSupportAgent) {
+    return null
+  }
+
+  // Show loading state while checking, then show widget
   if (loaded) return <ChatWidget initialOpen />
 
   return (

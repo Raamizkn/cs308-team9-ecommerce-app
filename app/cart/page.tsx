@@ -20,8 +20,52 @@ export default function CartPage() {
   const [stockWarnings, setStockWarnings] = useState<Record<string, string>>({})
 
   useEffect(() => {
+    checkRoleAndRedirect()
+  }, [])
+
+  useEffect(() => {
     validateCartStock()
   }, [items])
+
+  const checkRoleAndRedirect = async () => {
+    try {
+      const supabase = getSupabaseBrowserClient()
+      const {
+        data: { user: authUser },
+      } = await supabase.auth.getUser()
+
+      if (!authUser) {
+        // Cart is accessible to guests, so don't redirect
+        return
+      }
+
+      // Check if user is a support agent, sales manager, or product manager
+      const [supportAgent, salesManager, productManager] = await Promise.all([
+        supabase.from("support_agents").select("uid").eq("uid", authUser.id).maybeSingle(),
+        supabase.from("sales_managers").select("uid").eq("uid", authUser.id).maybeSingle(),
+        supabase.from("product_managers").select("uid").eq("uid", authUser.id).maybeSingle(),
+      ])
+
+      if (supportAgent.data) {
+        router.push("/admin/chat")
+        return
+      }
+
+      if (salesManager.data) {
+        router.push("/sales-manager/dashboard")
+        return
+      }
+
+      if (productManager.data) {
+        router.push("/product-manager")
+        return
+      }
+
+      // If user is a regular customer, proceed (cart is accessible)
+    } catch (error) {
+      console.error("[Group9] Error checking role:", error)
+    }
+  }
 
   const validateCartStock = async () => {
     if (items.length === 0) {
@@ -128,8 +172,8 @@ export default function CartPage() {
                   )}
 
                   <div className="flex gap-4">
-                    <div className="relative w-24 h-24 bg-[#4ecdc4] border-4 border-black flex-shrink-0">
-                      <Image src={item.image_url || "/placeholder.svg"} alt={item.name} fill className="object-contain" />
+                    <div className="relative w-24 h-24 bg-[#2a9d8f] border-4 border-black flex-shrink-0">
+                      <Image src={item.image_url || "/placeholder.svg"} alt={item.name} fill className="object-contain" style={{ objectPosition: 'center' }} />
                     </div>
 
                     <div className="flex-1 min-w-0">

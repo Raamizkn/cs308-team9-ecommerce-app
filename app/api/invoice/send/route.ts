@@ -143,12 +143,24 @@ export async function POST(request: Request) {
     }
 
     // Generate PDF stream and convert to buffer
-    const pdfStream = await renderToStream(React.createElement(InvoicePDF, { data: invoiceData }))
+    const pdfElement = React.createElement(InvoicePDF, { data: invoiceData })
+    const pdfStream = await renderToStream(pdfElement as any)
     
     // Convert stream to buffer
-    const chunks: Uint8Array[] = []
+    const chunks: Buffer[] = []
     for await (const chunk of pdfStream) {
-      chunks.push(chunk)
+      // Ensure chunk is a Buffer - handle all possible types
+      const chunkValue = chunk as unknown
+      if (Buffer.isBuffer(chunkValue)) {
+        chunks.push(chunkValue)
+      } else if (chunkValue instanceof Uint8Array) {
+        chunks.push(Buffer.from(chunkValue))
+      } else if (typeof chunkValue === 'string') {
+        chunks.push(Buffer.from(chunkValue, 'utf-8'))
+      } else {
+        // Fallback for other types (treat as Uint8Array-like)
+        chunks.push(Buffer.from(chunkValue as ArrayLike<number>))
+      }
     }
     const pdfBuffer = Buffer.concat(chunks)
     

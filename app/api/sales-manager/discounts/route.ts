@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { getSupabaseServerClient } from "@/lib/supabase/server"
+import { sendDiscountAlertEmail } from "@/lib/discount-alerts/sendDiscountAlertEmail"
 
 // Create a discount campaign and notify wishlist users
 export async function POST(request: Request) {
@@ -99,7 +100,77 @@ export async function POST(request: Request) {
       console.log("[Group9] Notifications to insert:", notificationsToInsert)
       
       if (notificationsToInsert.length > 0) {
+        // Fetch product details for all products
+        const productIds = [...new Set(notificationsToInsert.map((n: any) => n.product_id))]
+        const { data: products, error: productsError } = await supabase
+          .from("products_belong_to")
+          .select("pid, name, price")
+          .in("pid", productIds)
+
+        const productsMap = new Map(
+          (products || []).map((p: any) => [p.pid, { name: p.name, price: parseFloat(p.price) }])
+        )
+
+        // Fetch user profiles for all users
+        const userIds = [...new Set(notificationsToInsert.map((n: any) => n.user_id))]
+        
+        // Use service role key if available to bypass RLS
+        const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+        const { createClient } = await import("@supabase/supabase-js")
+        const profileClient = serviceRoleKey
+          ? createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, serviceRoleKey)
+          : supabase
+
+        // Fetch profiles (name only - email is in auth.users)
+        const { data: profiles, error: profilesError } = await profileClient
+          .from("profiles")
+          .select("uid, name")
+          .in("uid", userIds)
+
+        // Fetch emails from auth.users using Admin API
+        const profilesMap = new Map<string, { name: string; email: string | null }>()
+        
+        if (profiles) {
+          for (const profile of profiles) {
+            let email: string | null = null
+            
+            // Try to get email from auth.users using Admin API (requires service role key)
+            if (serviceRoleKey) {
+              try {
+                const adminClient = createClient(
+                  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+                  serviceRoleKey,
+                  {
+                    auth: {
+                      autoRefreshToken: false,
+                      persistSession: false,
+                    },
+                  }
+                )
+                
+                const { data: authUser, error: authError } = await adminClient.auth.admin.getUserById(profile.uid)
+                
+                if (!authError && authUser?.user?.email) {
+                  email = authUser.user.email
+                }
+              } catch (error) {
+                console.error(`[Group9] Error fetching email for user ${profile.uid}:`, error)
+              }
+            }
+            
+            profilesMap.set(profile.uid, {
+              name: profile.name || "Customer",
+              email: email,
+            })
+          }
+        }
+
+        // Note: If email cannot be fetched from auth.users, emails will be skipped
+        // Users will still receive in-app notifications
+
         let successCount = 0
+        let emailSentCount = 0
+
         for (const notification of notificationsToInsert) {
           const { data, error: notificationError } = await supabase.rpc("insert_discount_notification", {
             p_user_id: notification.user_id,
@@ -113,11 +184,49 @@ export async function POST(request: Request) {
           } else {
             console.log("[Group9] Successfully created notification:", data)
             successCount++
+
+            // Send discount alert email
+            const product = productsMap.get(notification.product_id)
+            const profile = profilesMap.get(notification.user_id)
+
+            if (product && profile && profile.email) {
+              // Send email asynchronously (don't wait for it to complete)
+              sendDiscountAlertEmail({
+                userEmail: profile.email,
+                userName: profile.name,
+                productId: notification.product_id,
+                productName: product.name,
+                productPrice: product.price,
+                discountRate: rate,
+                discountId: campaign.did,
+              })
+                .then((sent) => {
+                  if (sent) {
+                    emailSentCount++
+                    console.log(
+                      `[Group9] Discount alert email sent to ${profile.email} for product ${product.name}`
+                    )
+                  }
+                })
+                .catch((error) => {
+                  console.error("[Group9] Error sending discount alert email:", error)
+                })
+            } else {
+              console.log(
+                `[Group9] Skipping email for user ${notification.user_id} - missing product or email`,
+                {
+                  hasProduct: !!product,
+                  hasProfile: !!profile,
+                  hasEmail: profile?.email ? true : false,
+                }
+              )
+            }
           }
         }
         
         if (successCount > 0) {
           console.log("[Group9] Created", successCount, "notifications successfully")
+          console.log("[Group9] Sent", emailSentCount, "discount alert emails")
           notifiedCount = uniqueUserIds.length
         }
       }

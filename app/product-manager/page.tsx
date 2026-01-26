@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast"
 import { getSupabaseBrowserClient } from "@/lib/supabase/client"
-import { ArrowLeft, ClipboardList, PackageCheck, PlusCircle, X, LogOut, Download } from "lucide-react"
+import { ArrowLeft, ClipboardList, PackageCheck, PlusCircle, X, LogOut, Download, Upload, Image as ImageIcon } from "lucide-react"
 import { pdf } from "@react-pdf/renderer"
 import { InvoicePDF } from "@/components/invoice-pdf"
 
@@ -32,10 +32,12 @@ interface DeliveryRecord {
   product: string
   quantity: number
   total: number
-  status: "packing" | "in-transit" | "delivered"
+  status: "processing" | "in-transit" | "delivered"
   dueDate: string
   orderId?: string // Store actual order ID for status updates
   orderItemId?: string // Store order item ID
+  customerId: string
+  productId: number
 }
 
 interface InvoiceRecord {
@@ -102,6 +104,8 @@ export default function ProductManagerDashboardPage() {
   const [loadingCategories, setLoadingCategories] = useState(true)
   const [loadingInvoices, setLoadingInvoices] = useState(true)
   const [loadingDeliveries, setLoadingDeliveries] = useState(true)
+  const [pendingReviewsCount, setPendingReviewsCount] = useState(0)
+  const [loadingPendingReviews, setLoadingPendingReviews] = useState(true)
   const [user, setUser] = useState<any>(null)
   const [checkingAccess, setCheckingAccess] = useState(true)
   const [downloadingInvoiceId, setDownloadingInvoiceId] = useState<string | null>(null)
@@ -109,6 +113,9 @@ export default function ProductManagerDashboardPage() {
 
   const [stockEdits, setStockEdits] = useState<Record<number, string>>({})
   const [newCategory, setNewCategory] = useState("")
+  const [productImage, setProductImage] = useState<File | null>(null)
+  const [uploadingImage, setUploadingImage] = useState(false)
+  const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [newProduct, setNewProduct] = useState({
     name: "",
     sku: "",
@@ -116,7 +123,7 @@ export default function ProductManagerDashboardPage() {
     price: "",
     stock: "",
     reorderPoint: "",
-    distributor: "Spin Master",
+    distributor: "",
     description: "",
     model: "",
     warranty: "",
@@ -178,6 +185,7 @@ export default function ProductManagerDashboardPage() {
       fetchProducts()
       fetchInvoices()
       fetchDeliveries()
+      fetchPendingReviews()
     } catch (error) {
       console.error("[Group9] Error checking product manager access:", error)
       router.push("/login")
@@ -212,7 +220,7 @@ export default function ProductManagerDashboardPage() {
     try {
       setLoadingDeliveries(true)
       const supabase = getSupabaseBrowserClient()
-      
+
       // Fetch all orders with their items, products, and customer info via join
       const { data: ordersData, error: ordersError } = await supabase
         .from("orders")
@@ -227,6 +235,7 @@ export default function ProductManagerDashboardPage() {
             id,
             quantity,
             price,
+            product_id,
             products_belong_to (
               name
             )
@@ -241,13 +250,13 @@ export default function ProductManagerDashboardPage() {
       // Fetch customer names from profiles
       const userIds = [...new Set((ordersData || []).map((order: any) => order.user_id).filter(Boolean))]
       const profilesMap: Record<string, string> = {}
-      
+
       if (userIds.length > 0) {
         const { data: profilesData, error: profilesError } = await supabase
           .from("profiles")
           .select("uid, name")
           .in("uid", userIds)
-        
+
         if (profilesError) {
           console.error("[Group9] Error fetching profiles for deliveries:", profilesError)
         } else if (profilesData) {
@@ -260,20 +269,20 @@ export default function ProductManagerDashboardPage() {
       // Transform orders into delivery records
       const deliveryRecords: DeliveryRecord[] = (ordersData || []).flatMap((order: any) => {
         // Get customer name from profiles map, fallback to "Customer" or "Guest Customer"
-        const customerName = order.user_id 
+        const customerName = order.user_id
           ? (profilesMap[order.user_id] || "Customer")
           : "Guest Customer"
-        
+
         // Map each order item to a delivery record
         return (order.order_items || []).map((item: any, index: number) => {
           // Map order status to delivery status
-          let deliveryStatus: "packing" | "in-transit" | "delivered" = "packing"
+          let deliveryStatus: "processing" | "in-transit" | "delivered" = "processing"
           if (order.status === "delivered") {
             deliveryStatus = "delivered"
           } else if (order.status === "in-transit") {
             deliveryStatus = "in-transit"
           } else {
-            deliveryStatus = "packing" // Maps to 'processing' in DB
+            deliveryStatus = "processing" // Maps to 'processing' in DB
           }
 
           // Calculate due date (7 days from order creation)
@@ -292,6 +301,8 @@ export default function ProductManagerDashboardPage() {
             dueDate: dueDate.toISOString().split('T')[0],
             orderId: order.id, // Store actual order ID for status updates
             orderItemId: item.id, // Store order item ID
+            customerId: order.user_id,
+            productId: item.product_id,
           }
         })
       })
@@ -315,7 +326,7 @@ export default function ProductManagerDashboardPage() {
     try {
       setLoadingInvoices(true)
       const supabase = getSupabaseBrowserClient()
-      
+
       // Fetch all orders with their items, products, and customer info via join
       const { data: ordersData, error: ordersError } = await supabase
         .from("orders")
@@ -344,13 +355,13 @@ export default function ProductManagerDashboardPage() {
       // Fetch customer names from profiles
       const userIds = [...new Set((ordersData || []).map((order: any) => order.user_id).filter(Boolean))]
       const profilesMap: Record<string, string> = {}
-      
+
       if (userIds.length > 0) {
         const { data: profilesData, error: profilesError } = await supabase
           .from("profiles")
           .select("uid, name")
           .in("uid", userIds)
-        
+
         if (profilesError) {
           console.error("[Group9] Error fetching profiles for invoices:", profilesError)
         } else if (profilesData) {
@@ -363,10 +374,10 @@ export default function ProductManagerDashboardPage() {
       // Transform orders into invoice records
       const invoiceRecords: InvoiceRecord[] = (ordersData || []).map((order: any) => {
         // Get customer name from profiles map, fallback to "Customer" or "Guest Customer"
-        const customerName = order.user_id 
+        const customerName = order.user_id
           ? (profilesMap[order.user_id] || "Customer")
           : "Guest Customer"
-        
+
         // Determine status for display
         let displayStatus: "awaiting-shipment" | "shipped" | "delivered" = "awaiting-shipment"
         if (order.status === "delivered") {
@@ -403,11 +414,27 @@ export default function ProductManagerDashboardPage() {
     }
   }
 
+  const fetchPendingReviews = async () => {
+    try {
+      setLoadingPendingReviews(true)
+      const response = await fetch("/api/reviews?status=pending")
+      if (response.ok) {
+        const data = await response.json()
+        setPendingReviewsCount(data.reviews?.length || 0)
+      }
+    } catch (error) {
+      console.error("[Group9] Error fetching pending reviews:", error)
+      // Don't show toast for this background fetch to avoid clutter
+    } finally {
+      setLoadingPendingReviews(false)
+    }
+  }
+
   const downloadInvoicePDF = async (orderId: string) => {
     setDownloadingInvoiceId(orderId)
     try {
       const supabase = getSupabaseBrowserClient()
-      
+
       // Fetch full order details
       const { data: order, error: orderError } = await supabase
         .from("orders")
@@ -422,41 +449,43 @@ export default function ProductManagerDashboardPage() {
       // Fetch customer information
       let customerName = "Customer"
       let customerEmail = "customer@pixelvault.com"
-      
+
       if (order.user_id) {
         try {
-          const response = await fetch(`/api/users?user_id=${order.user_id}`)
-          if (response.ok) {
-            const userData = await response.json()
-            if (userData.name) {
-              customerName = userData.name
-            }
-            if (userData.email) {
-              customerEmail = userData.email
-            }
-          }
-        } catch (error) {
-          console.error("[Group9] Error fetching user info:", error)
-          // Fallback: try to get from profiles
+          // Fetch customer name from profiles
           const { data: profileData } = await supabase
             .from("profiles")
             .select("name")
             .eq("uid", order.user_id)
             .maybeSingle()
-          
+
           if (profileData?.name) {
             customerName = profileData.name
           }
+
+          // Fetch customer email using admin API (for product managers)
+          const emailResponse = await fetch(`/api/admin/user-email?user_id=${order.user_id}`)
+          if (emailResponse.ok) {
+            const emailData = await emailResponse.json()
+            if (emailData.email) {
+              customerEmail = emailData.email
+            }
+          } else {
+            console.error("[Group9] Error fetching customer email:", await emailResponse.text())
+          }
+        } catch (error) {
+          console.error("[Group9] Error fetching user info:", error)
         }
       }
 
-      // Calculate totals
-      const subtotal = order.order_items?.reduce((sum: number, item: any) => sum + (item.price * item.quantity), 0) || 0
+      // Use tax_amount, subtotal, and total from order (same as customer side)
+      // This ensures product manager sees exactly what customer sees
+      const subtotal = order.subtotal || order.order_items?.reduce((sum: number, item: any) => sum + (item.price * item.quantity), 0) || 0
       const shipping = 0
-      const tax = 0
-      const total = subtotal
+      const tax = order.tax_amount || 0
+      const total = order.total || subtotal + tax
 
-      // Prepare invoice data
+      // Prepare invoice data (exactly matching customer side format)
       const invoiceData = {
         orderId: order.id,
         orderDate: order.created_at,
@@ -659,11 +688,11 @@ export default function ProductManagerDashboardPage() {
       }
 
       const data = await response.json()
-      
+
       // Add new category to local state
       setCategories((prev) => [...prev, { cid: data.category.cid, name: data.category.name }])
       setNewCategory("")
-      
+
       toast({
         title: "Category added",
         description: `${data.category.name} has been successfully added`,
@@ -696,7 +725,7 @@ export default function ProductManagerDashboardPage() {
       // Remove category from local state
       setCategories((prev) => {
         const updated = prev.filter((category) => category.cid !== categoryToRemove.cid)
-        
+
         // If the deleted category was selected for new product, update it
         if (newProduct.category === categoryToRemove.name) {
           setNewProduct((prevProduct) => ({
@@ -704,10 +733,10 @@ export default function ProductManagerDashboardPage() {
             category: updated.length > 0 ? updated[0]?.name || "" : "",
           }))
         }
-        
+
         return updated
       })
-      
+
       toast({
         title: "Category removed",
         description: `${categoryToRemove.name} has been successfully removed`,
@@ -769,7 +798,7 @@ export default function ProductManagerDashboardPage() {
       }
 
       const supabase = getSupabaseBrowserClient()
-      
+
       // Map delivery status to order status
       // Database allows: 'processing', 'in-transit', 'delivered', 'cancelled'
       let orderStatus: string = "processing"
@@ -778,7 +807,7 @@ export default function ProductManagerDashboardPage() {
       } else if (status === "in-transit") {
         orderStatus = "in-transit"  // Fixed: was "shipped" which is not a valid status
       } else {
-        // "packing" maps to "processing"
+        // "processing" matches DB
         orderStatus = "processing"
       }
 
@@ -794,7 +823,7 @@ export default function ProductManagerDashboardPage() {
 
       // Update local state
       setDeliveries((prev) => prev.map((delivery) => (delivery.id === id ? { ...delivery, status } : delivery)))
-      
+
       toast({
         title: "Delivery updated",
         description: `Delivery ${id} marked as ${status}`,
@@ -833,6 +862,39 @@ export default function ProductManagerDashboardPage() {
       return
     }
 
+    // Upload image first if provided
+    let imageUrl: string | null = null
+    if (productImage) {
+      try {
+        setUploadingImage(true)
+        const formData = new FormData()
+        formData.append("file", productImage)
+
+        const uploadResponse = await fetch("/api/upload/image", {
+          method: "POST",
+          body: formData,
+        })
+
+        if (!uploadResponse.ok) {
+          const error = await uploadResponse.json()
+          throw new Error(error.error || "Failed to upload image")
+        }
+
+        const uploadData = await uploadResponse.json()
+        imageUrl = uploadData.imageUrl
+      } catch (error) {
+        toast({
+          title: "Image upload failed",
+          description: error instanceof Error ? error.message : "Failed to upload image",
+          variant: "destructive",
+        })
+        setUploadingImage(false)
+        return
+      } finally {
+        setUploadingImage(false)
+      }
+    }
+
     try {
       const response = await fetch("/api/product-manager/products", {
         method: "POST",
@@ -849,6 +911,7 @@ export default function ProductManagerDashboardPage() {
           description: description || null,
           model: model || null,
           warranty_status: warranty || null,
+          image_url: imageUrl,
         }),
       })
 
@@ -870,11 +933,13 @@ export default function ProductManagerDashboardPage() {
         price: "",
         stock: "",
         reorderPoint: "",
-        distributor: "Spin Master",
+        distributor: "",
         description: "",
         model: "",
         warranty: "",
       })
+      setProductImage(null)
+      setImagePreview(null)
 
       toast({
         title: "Product created",
@@ -950,57 +1015,57 @@ export default function ProductManagerDashboardPage() {
           ) : (
             <div className="divide-y-2 divide-black">
               {products.map((product) => {
-              const isLow = product.stock <= 10 // Low stock threshold
-              return (
-                <div key={product.pid} className="p-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                  <div>
-                    <div className="flex items-center gap-3 mb-1">
-                      <h3 className="text-2xl font-bold text-[#1a1a3e]">{product.name}</h3>
-                      {isLow ? (
-                        <span className="px-3 py-1 bg-[#dc3545] text-white text-xs font-bold border-2 border-black">
-                          REORDER NOW
-                        </span>
-                      ) : (
-                        <span className="px-3 py-1 bg-[#6bcf7f] text-[#1a1a3e] text-xs font-bold border-2 border-black">
-                          OK
-                        </span>
-                      )}
+                const isLow = product.stock <= 10 // Low stock threshold
+                return (
+                  <div key={product.pid} className="p-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <div className="flex items-center gap-3 mb-1">
+                        <h3 className="text-2xl font-bold text-[#1a1a3e]">{product.name}</h3>
+                        {isLow ? (
+                          <span className="px-3 py-1 bg-[#dc3545] text-white text-xs font-bold border-2 border-black">
+                            REORDER NOW
+                          </span>
+                        ) : (
+                          <span className="px-3 py-1 bg-[#6bcf7f] text-[#1a1a3e] text-xs font-bold border-2 border-black">
+                            OK
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-sm text-[#6c757d] font-mono">SKU: {product.sku} • {product.category}</p>
+                      <p className="text-sm text-[#6c757d]">Distributor: {product.warehouse}</p>
+                      <div className="mt-3 flex flex-wrap gap-4 text-sm font-bold text-[#1a1a3e]">
+                        <span>Stock: {product.stock} units</span>
+                        <span>Price: ${product.price.toFixed(2)}</span>
+                      </div>
                     </div>
-                    <p className="text-sm text-[#6c757d] font-mono">SKU: {product.sku} • {product.category}</p>
-                    <p className="text-sm text-[#6c757d]">Distributor: {product.warehouse}</p>
-                    <div className="mt-3 flex flex-wrap gap-4 text-sm font-bold text-[#1a1a3e]">
-                      <span>Stock: {product.stock} units</span>
-                      <span>Price: ${product.price.toFixed(2)}</span>
+                    <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+                      <Input
+                        placeholder="+/- units"
+                        value={stockEdits[product.pid] ?? ""}
+                        onChange={(event) =>
+                          setStockEdits((prev) => ({
+                            ...prev,
+                            [product.pid]: event.target.value,
+                          }))
+                        }
+                        className="border-2 border-black bg-[#f8f9fa]"
+                      />
+                      <Button
+                        onClick={() => handleStockUpdate(product.pid)}
+                        className="bg-[#5b3a8f] text-white border-4 border-black font-bold"
+                      >
+                        UPDATE STOCK
+                      </Button>
+                      <Button
+                        onClick={() => handleRemoveProduct(product.pid)}
+                        className="bg-[#dc3545] text-white border-4 border-black font-bold"
+                      >
+                        REMOVE PRODUCT
+                      </Button>
                     </div>
                   </div>
-                  <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
-                    <Input
-                      placeholder="+/- units"
-                      value={stockEdits[product.pid] ?? ""}
-                      onChange={(event) =>
-                        setStockEdits((prev) => ({
-                          ...prev,
-                          [product.pid]: event.target.value,
-                        }))
-                      }
-                      className="border-2 border-black bg-[#f8f9fa]"
-                    />
-                    <Button
-                      onClick={() => handleStockUpdate(product.pid)}
-                      className="bg-[#5b3a8f] text-white border-4 border-black font-bold"
-                    >
-                      UPDATE STOCK
-                    </Button>
-                    <Button
-                      onClick={() => handleRemoveProduct(product.pid)}
-                      className="bg-[#dc3545] text-white border-4 border-black font-bold"
-                    >
-                      REMOVE PRODUCT
-                    </Button>
-                  </div>
-                </div>
-              )
-            })}
+                )
+              })}
             </div>
           )}
         </section>
@@ -1042,21 +1107,12 @@ export default function ProductManagerDashboardPage() {
                     ))}
                   </SelectContent>
                 </Select>
-                <Select
+                <Input
+                  placeholder="Distributor Info"
                   value={newProduct.distributor}
-                  onValueChange={(value) => setNewProduct({ ...newProduct, distributor: value })}
-                >
-                  <SelectTrigger className="border-2 border-black bg-[#f8f9fa]">
-                    <SelectValue placeholder="Distributor" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {["Spin Master", "CD Projekt Red", "The Pokemon Company", "Wizarding World Inc."].map((distributor) => (
-                      <SelectItem key={distributor} value={distributor}>
-                        {distributor}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  onChange={(event) => setNewProduct({ ...newProduct, distributor: event.target.value })}
+                  className="border-2 border-black bg-[#f8f9fa]"
+                />
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <Input
@@ -1093,9 +1149,76 @@ export default function ProductManagerDashboardPage() {
                 className="border-2 border-black bg-[#f8f9fa]"
                 rows={3}
               />
-              <Button onClick={handleCreateProduct} className="w-full bg-[#4ecdc4] text-[#1a1a3e] border-4 border-black font-bold">
-                <PlusCircle className="h-4 w-4 mr-2" />
-                SAVE PRODUCT DRAFT
+              {/* Image Upload */}
+              <div className="space-y-2">
+                <label className="text-sm font-bold text-[#1a1a3e] flex items-center gap-2">
+                  <ImageIcon className="h-4 w-4" />
+                  Product Image
+                </label>
+                <div className="border-2 border-black bg-[#f8f9fa] p-4">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0]
+                      if (file) {
+                        setProductImage(file)
+                        // Create preview
+                        const reader = new FileReader()
+                        reader.onloadend = () => {
+                          setImagePreview(reader.result as string)
+                        }
+                        reader.readAsDataURL(file)
+                      }
+                    }}
+                    className="w-full text-sm file:mr-4 file:py-2 file:px-4 file:border-2 file:border-black file:bg-white file:font-bold file:cursor-pointer hover:file:bg-[#e9ecef]"
+                    disabled={uploadingImage}
+                  />
+                  {imagePreview && (
+                    <div className="mt-4">
+                      <p className="text-xs text-[#6c757d] mb-2 font-bold">Preview:</p>
+                      <div className="relative w-32 h-32 border-2 border-black overflow-hidden bg-white">
+                        <img
+                          src={imagePreview}
+                          alt="Preview"
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                      <Button
+                        type="button"
+                        onClick={() => {
+                          setProductImage(null)
+                          setImagePreview(null)
+                        }}
+                        className="mt-2 bg-[#dc3545] text-white border-2 border-black font-bold text-xs"
+                        size="sm"
+                      >
+                        <X className="h-3 w-3 mr-1" />
+                        Remove Image
+                      </Button>
+                    </div>
+                  )}
+                </div>
+                <p className="text-xs text-[#6c757d]">
+                  Image will be automatically converted to WebP format for optimal performance
+                </p>
+              </div>
+              <Button
+                onClick={handleCreateProduct}
+                disabled={uploadingImage}
+                className="w-full bg-[#4ecdc4] text-[#1a1a3e] border-4 border-black font-bold disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {uploadingImage ? (
+                  <>
+                    <div className="inline-block w-4 h-4 border-2 border-[#1a1a3e] border-t-transparent rounded-full animate-spin mr-2" />
+                    Uploading Image...
+                  </>
+                ) : (
+                  <>
+                    <PlusCircle className="h-4 w-4 mr-2" />
+                    SAVE PRODUCT DRAFT
+                  </>
+                )}
               </Button>
             </div>
           </div>
@@ -1163,7 +1286,7 @@ export default function ProductManagerDashboardPage() {
                   const startIndex = (deliveryPage - 1) * itemsPerPage
                   const endIndex = startIndex + itemsPerPage
                   const paginatedDeliveries = deliveries.slice(startIndex, endIndex)
-                  
+
                   return paginatedDeliveries.map((delivery) => (
                     <div key={delivery.id} className="p-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                       <div>
@@ -1176,7 +1299,10 @@ export default function ProductManagerDashboardPage() {
                         <p className="text-sm text-[#6c757d] font-mono">
                           Delivery #{delivery.id} • Due {new Date(delivery.dueDate).toLocaleDateString()}
                         </p>
-                        <p className="text-sm text-[#6c757d]">Customer: {delivery.customer}</p>
+                        <p className="text-sm text-[#6c757d]">Customer Name: {delivery.customer}</p>
+                        <p className="text-sm text-[#6c757d]">Customer ID: {delivery.customerId}</p>
+                        <p className="text-sm text-[#6c757d]">Product ID: {delivery.productId}</p>
+                        <p className="text-sm text-[#6c757d]">Quantity: {delivery.quantity}</p>
                         <p className="text-sm text-[#6c757d]">Address: {delivery.address}</p>
                         <p className="text-sm font-bold text-[#1a1a3e] mt-1">Total: ${delivery.total.toFixed(2)}</p>
                       </div>
@@ -1186,9 +1312,9 @@ export default function ProductManagerDashboardPage() {
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="packing">Packing</SelectItem>
+                            <SelectItem value="processing">Processing</SelectItem>
                             <SelectItem value="in-transit">In Transit</SelectItem>
-                            <SelectItem 
+                            <SelectItem
                               value="delivered"
                               className="bg-[#6bcf7f] text-[#1a1a3e] font-bold hover:bg-[#5bb86f] focus:bg-[#5bb86f] data-[highlighted]:bg-[#5bb86f]"
                             >
@@ -1270,13 +1396,12 @@ export default function ProductManagerDashboardPage() {
                           <p className="text-lg font-bold text-[#1a1a3e]">Order {invoice.orderId}</p>
                         </div>
                         <div className="flex items-center gap-2">
-                          <span className={`px-3 py-1.5 border-2 border-black text-xs font-bold whitespace-nowrap ${
-                            invoice.status === "delivered" 
-                              ? "bg-[#6bcf7f] text-[#1a1a3e]"
-                              : invoice.status === "shipped"
+                          <span className={`px-3 py-1.5 border-2 border-black text-xs font-bold whitespace-nowrap ${invoice.status === "delivered"
+                            ? "bg-[#6bcf7f] text-[#1a1a3e]"
+                            : invoice.status === "shipped"
                               ? "bg-[#4ecdc4] text-[#1a1a3e]"
                               : "bg-[#ffb347] text-[#1a1a3e]"
-                          }`}>
+                            }`}>
                             {invoice.status.replace("-", " ").toUpperCase()}
                           </span>
                           <Button
@@ -1327,7 +1452,9 @@ export default function ProductManagerDashboardPage() {
             <div className="p-6 space-y-4">
               <div className="bg-[#f8f9fa] border-2 border-black p-4">
                 <p className="text-sm text-[#6c757d] mb-2">Pending approvals</p>
-                <p className="text-3xl font-bold text-[#1a1a3e]">3 reviews</p>
+                <p className="text-3xl font-bold text-[#1a1a3e]">
+                  {loadingPendingReviews ? "..." : `${pendingReviewsCount} reviews`}
+                </p>
                 <p className="text-sm text-[#6c757d]">
                   Pull data from `/api/reviews/pending` and show quick insights in this card.
                 </p>

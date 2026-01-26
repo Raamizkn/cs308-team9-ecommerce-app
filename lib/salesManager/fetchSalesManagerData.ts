@@ -64,19 +64,35 @@ export async function fetchSalesManagerOrders(): Promise<SalesManagerOrder[]> {
       .from("orders")
       .select(
         `
-          order_id,
-          order_date,
-          total_amount,
-          order_status,
-          profiles!orders_customer_id_fkey (
-            name,
-            customers (email)
-          )
+          id,
+          created_at,
+          total,
+          status,
+          user_id
         `
       )
-      .order("order_date", { ascending: false })
+      .order("created_at", { ascending: false })
 
     if (ordersError) throw ordersError
+
+    // Fetch customer profiles for all orders with user_id
+    const userIds = [...new Set((ordersData || [])
+      .filter((o: any) => o.user_id)
+      .map((o: any) => o.user_id))]
+    
+    let profilesMap: Record<string, { name: string; email: string }> = {}
+    if (userIds.length > 0) {
+      const { data: profilesData } = await supabase
+        .from("profiles")
+        .select("uid, name")
+        .in("uid", userIds)
+      
+      if (profilesData) {
+        profilesData.forEach((profile: any) => {
+          profilesMap[profile.uid] = { name: profile.name || "Unknown Customer", email: "No Email" }
+        })
+      }
+    }
 
     // For each order, fetch order items
     const ordersWithItems = await Promise.all(
@@ -86,26 +102,32 @@ export async function fetchSalesManagerOrders(): Promise<SalesManagerOrder[]> {
           .select(
             `
               quantity,
-              unit_price,
-              products (name)
+              price,
+              products_belong_to (
+                name
+              )
             `
           )
-          .eq("order_id", order.order_id)
+          .eq("order_id", order.id)
 
         const items: SalesManagerOrderItem[] = (itemsData || []).map((item: any) => ({
-          product_name: item.products?.name || "Unknown Product",
+          product_name: item.products_belong_to?.name || "Unknown Product",
           quantity: item.quantity,
-          unit_price: item.unit_price,
-          total_price: item.quantity * item.unit_price,
+          unit_price: item.price,
+          total_price: item.quantity * item.price,
         }))
 
+        // Get customer data from profiles map
+        const customerName = profilesMap[order.user_id]?.name || "Unknown Customer"
+        const customerEmail = profilesMap[order.user_id]?.email || "No Email"
+
         return {
-          order_id: order.order_id,
-          customer_name: order.profiles?.name || "Unknown Customer",
-          customer_email: order.profiles?.customers?.email || "No Email",
-          order_date: order.order_date,
-          total_amount: order.total_amount,
-          order_status: order.order_status,
+          order_id: order.id,
+          customer_name: customerName,
+          customer_email: customerEmail,
+          order_date: order.created_at,
+          total_amount: order.total,
+          order_status: order.status,
           items,
         }
       })

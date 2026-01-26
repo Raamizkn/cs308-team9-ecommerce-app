@@ -20,7 +20,7 @@ export default function CheckoutPage() {
   const { toast } = useToast()
   const [loading, setLoading] = useState(false)
 
-const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState({
     name: "",
     email: "",
     address: "",
@@ -78,6 +78,41 @@ const [formData, setFormData] = useState({
       } = await supabase.auth.getUser()
 
       console.log("[Group9] Client-side: User check before order:", user?.id || "NOT LOGGED IN")
+
+      // Validate Payment Information
+      const cardNumberClean = formData.cardNumber.replace(/\s/g, "")
+      const cardExpiryPattern = /^(0[1-9]|1[0-2])\/\d{2}$/
+      const cardCvvPattern = /^\d{3}$/
+
+      if (!/^\d{16}$/.test(cardNumberClean)) {
+        toast({
+          title: "Invalid Card Number",
+          description: "Card number must be 16 digits.",
+          variant: "destructive",
+        })
+        setLoading(false)
+        return
+      }
+
+      if (!cardExpiryPattern.test(formData.cardExpiry)) {
+        toast({
+          title: "Invalid Expiry Date",
+          description: "Expiry date must be in MM/YY format.",
+          variant: "destructive",
+        })
+        setLoading(false)
+        return
+      }
+
+      if (!cardCvvPattern.test(formData.cardCvv)) {
+        toast({
+          title: "Invalid CVV",
+          description: "CVV must be 3 digits.",
+          variant: "destructive",
+        })
+        setLoading(false)
+        return
+      }
 
       // Create order
       const taxAmount = totalPrice * 0.20

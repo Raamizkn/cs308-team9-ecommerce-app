@@ -31,13 +31,40 @@ export default function OrdersPage() {
         data: { user: authUser },
       } = await supabase.auth.getUser()
 
-      if (authUser) {
+      if (!authUser) {
+        router.push("/login")
+        return
+      }
+
+      // Check if user is a support agent, sales manager, or product manager
+      const [supportAgent, salesManager, productManager] = await Promise.all([
+        supabase.from("support_agents").select("uid").eq("uid", authUser.id).maybeSingle(),
+        supabase.from("sales_managers").select("uid").eq("uid", authUser.id).maybeSingle(),
+        supabase.from("product_managers").select("uid").eq("uid", authUser.id).maybeSingle(),
+      ])
+
+      if (supportAgent.data) {
+        router.push("/admin/chat")
+        return
+      }
+
+      if (salesManager.data) {
+        router.push("/sales-manager/dashboard")
+        return
+      }
+
+      if (productManager.data) {
+        router.push("/product-manager")
+        return
+      }
+
+      // If user is a regular customer, proceed
         setUserId(authUser.id)
         const { data } = await supabase.from("users").select("*").eq("id", authUser.id).single()
         setUser(data || { email: authUser.email, name: authUser.user_metadata?.name })
-      }
     } catch (error) {
       console.error("[Group9] Error checking auth:", error)
+      router.push("/")
     }
   }
 

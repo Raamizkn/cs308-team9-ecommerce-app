@@ -1,14 +1,17 @@
+import { PixelHeader } from "@/components/pixel-header"
+
 export default function AboutPage() {
   return (
-    <main className="min-h-screen bg-[#e8f4f8]">
-      <div className="container mx-auto px-4 py-12">
+    <div className="min-h-screen bg-[#e8f4f8]">
+      <PixelHeader />
+      <main className="container mx-auto px-4 py-12">
         {/* Hero Section */}
         <div className="text-center mb-16">
           <h1 className="font-[family-name:var(--font-pixel)] text-4xl md:text-6xl text-[#5b3a8f] mb-6 pixel-shadow">
             ABOUT PIXELVAULT
           </h1>
           <p className="text-xl text-[#2c3e50] max-w-3xl mx-auto leading-relaxed">
-            Your premier destination for limited-edition pixelated digital collectibles
+            Your premier destination for premium playing cards, trading cards, and collectible card games
           </p>
         </div>
 
@@ -18,13 +21,13 @@ export default function AboutPage() {
           <section className="bg-white border-4 border-black p-8 pixel-shadow">
             <h2 className="font-[family-name:var(--font-pixel)] text-2xl text-[#5b3a8f] mb-4">OUR MISSION</h2>
             <p className="text-[#2c3e50] leading-relaxed mb-4">
-              PixelVault was created to celebrate the art of pixel design and provide a marketplace where digital
-              artists and collectors can connect. We believe in the power of retro aesthetics combined with modern
-              technology.
+              PixelVault was created to provide card game enthusiasts and collectors with a trusted marketplace for
+              premium playing cards, trading cards, and collectible card games. We believe in quality, authenticity,
+              and bringing together card game communities.
             </p>
             <p className="text-[#2c3e50] leading-relaxed">
-              Every item in our collection is carefully curated to ensure quality, uniqueness, and that nostalgic 8-bit
-              charm that brings joy to tech enthusiasts and art lovers alike.
+              Every deck in our collection is carefully curated to ensure quality, authenticity, and that perfect
+              feel that brings joy to card players, collectors, and game enthusiasts alike.
             </p>
           </section>
 
@@ -33,23 +36,23 @@ export default function AboutPage() {
             <h2 className="font-[family-name:var(--font-pixel)] text-2xl text-black mb-6">WHAT WE OFFER</h2>
             <div className="grid md:grid-cols-2 gap-6">
               <div className="bg-white border-4 border-black p-6">
-                <h3 className="font-bold text-[#5b3a8f] mb-2 text-lg">Pixel Avatars</h3>
+                <h3 className="font-bold text-[#5b3a8f] mb-2 text-lg">Playing Cards</h3>
                 <p className="text-[#2c3e50]">
-                  Unique character designs perfect for profiles, games, and digital identity
+                  Premium decks for poker, bridge, and casual card games from top manufacturers
                 </p>
               </div>
               <div className="bg-white border-4 border-black p-6">
-                <h3 className="font-bold text-[#5b3a8f] mb-2 text-lg">Game Sprites</h3>
-                <p className="text-[#2c3e50]">Ready-to-use sprites for your indie game projects and creative works</p>
+                <h3 className="font-bold text-[#5b3a8f] mb-2 text-lg">Trading Cards</h3>
+                <p className="text-[#2c3e50]">Collectible trading cards from popular games and franchises</p>
               </div>
               <div className="bg-white border-4 border-black p-6">
-                <h3 className="font-bold text-[#5b3a8f] mb-2 text-lg">Collectible Art</h3>
-                <p className="text-[#2c3e50]">Limited-edition pieces from talented pixel artists around the world</p>
+                <h3 className="font-bold text-[#5b3a8f] mb-2 text-lg">Card Games</h3>
+                <p className="text-[#2c3e50]">Complete card game sets and expansions for your collection</p>
               </div>
               <div className="bg-white border-4 border-black p-6">
-                <h3 className="font-bold text-[#5b3a8f] mb-2 text-lg">UI Elements</h3>
+                <h3 className="font-bold text-[#5b3a8f] mb-2 text-lg">Accessories</h3>
                 <p className="text-[#2c3e50]">
-                  Icons, buttons, and interface components for your retro-styled projects
+                  Card sleeves, deck boxes, and other accessories to protect and organize your collection
                 </p>
               </div>
             </div>
@@ -60,54 +63,46 @@ export default function AboutPage() {
             <h2 className="font-[family-name:var(--font-pixel)] text-2xl text-black mb-6">WHY PIXELVAULT?</h2>
             <ul className="space-y-4">
               <li className="flex items-start gap-3">
-                <span className="text-2xl">🎨</span>
+                <span className="text-2xl"></span>
                 <div>
-                  <strong className="text-[#2c3e50]">Curated Collection:</strong>
-                  <span className="text-[#2c3e50]"> Every item is handpicked for quality and style</span>
+                  <strong className="text-[#2c3e50]">Authentic Products:</strong>
+                  <span className="text-[#2c3e50]"> Every deck is verified for authenticity and quality</span>
                 </div>
               </li>
               <li className="flex items-start gap-3">
-                <span className="text-2xl">⭐</span>
+                <span className="text-2xl"></span>
                 <div>
-                  <strong className="text-[#2c3e50]">Limited Editions:</strong>
-                  <span className="text-[#2c3e50]"> Exclusive items with limited availability</span>
+                  <strong className="text-[#2c3e50]">Wide Selection:</strong>
+                  <span className="text-[#2c3e50]"> From classic designs to modern collectibles</span>
                 </div>
               </li>
               <li className="flex items-start gap-3">
-                <span className="text-2xl">💎</span>
+                <span className="text-2xl"></span>
                 <div>
-                  <strong className="text-[#2c3e50]">High Quality:</strong>
-                  <span className="text-[#2c3e50]"> Professional-grade pixel art from talented creators</span>
+                  <strong className="text-[#2c3e50]">Premium Quality:</strong>
+                  <span className="text-[#2c3e50]"> Professional-grade cards from trusted manufacturers</span>
                 </div>
               </li>
               <li className="flex items-start gap-3">
-                <span className="text-2xl">🚀</span>
+                <span className="text-2xl"></span>
                 <div>
-                  <strong className="text-[#2c3e50]">Instant Delivery:</strong>
-                  <span className="text-[#2c3e50]"> Download your purchases immediately after checkout</span>
+                  <strong className="text-[#2c3e50]">Fast Shipping:</strong>
+                  <span className="text-[#2c3e50]"> Secure packaging and reliable delivery to your door</span>
                 </div>
               </li>
             </ul>
           </section>
 
-          {/* Community */}
+          {/* Contact */}
           <section className="bg-white border-4 border-black p-8 pixel-shadow text-center">
-            <h2 className="font-[family-name:var(--font-pixel)] text-2xl text-[#5b3a8f] mb-4">JOIN OUR COMMUNITY</h2>
+            <h2 className="font-[family-name:var(--font-pixel)] text-2xl text-[#5b3a8f] mb-4">NEED HELP?</h2>
             <p className="text-[#2c3e50] leading-relaxed mb-6">
-              Connect with fellow pixel art enthusiasts, share your creations, and stay updated on new releases and
-              exclusive drops.
+              Have questions about our products, orders, or need assistance? Our support team is here to help.
+              Use the live chat feature on any page to get in touch with us.
             </p>
-            <div className="flex justify-center gap-4">
-              <button className="bg-[#5b3a8f] text-white px-6 py-3 border-4 border-black font-bold hover:bg-[#4a2f73] transition-colors pixel-shadow">
-                DISCORD
-              </button>
-              <button className="bg-[#4ecdc4] text-black px-6 py-3 border-4 border-black font-bold hover:bg-[#3db8af] transition-colors pixel-shadow">
-                TWITTER
-              </button>
-            </div>
           </section>
         </div>
-      </div>
-    </main>
+      </main>
+    </div>
   )
 }

@@ -1,7 +1,8 @@
 "use client"
 
-import { createContext, useContext, useState, useEffect, type ReactNode } from "react"
+import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react"
 import { useToast } from "@/hooks/use-toast"
+import { getSupabaseBrowserClient } from "@/lib/supabase/client"
 
 interface CartItem {
   id: string
@@ -27,24 +28,70 @@ const CartContext = createContext<CartContextType | undefined>(undefined)
 
 export function CartProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([])
+  const [isLoading, setIsLoading] = useState(true)
   const { toast } = useToast()
 
-  // Load cart from localStorage on mount
+  // Sync cart to database
+  const syncCartToDatabase = useCallback(async (cartItems: CartItem[]) => {
+    try {
+      const supabase = getSupabaseBrowserClient()
+      const { data: { user } } = await supabase.auth.getUser()
+
+      // Only sync if user is logged in
+      if (!user) {
+        return
+      }
+
+      // Call API to sync cart
+      const response = await fetch("/api/cart/sync", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ items: cartItems }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: "Unknown error" }))
+        // Don't show error to user - cart still works in localStorage
+        console.error("[Group9] Error syncing cart to database:", errorData.error)
+      }
+    } catch (error) {
+      // Silently fail - cart still works in localStorage
+      console.error("[Group9] Error syncing cart:", error)
+    }
+  }, [])
+
+  // Load cart from localStorage on mount and sync to database
   useEffect(() => {
+    const loadCart = async () => {
+      setIsLoading(true)
     const savedCart = localStorage.getItem("pixelvault-cart")
     if (savedCart) {
       try {
-        setItems(JSON.parse(savedCart))
+          const parsedCart = JSON.parse(savedCart)
+          setItems(parsedCart)
+          // Sync to database if user is logged in
+          await syncCartToDatabase(parsedCart)
       } catch (error) {
         console.error("Error loading cart:", error)
       }
     }
-  }, [])
+      setIsLoading(false)
+    }
+    loadCart()
+  }, [syncCartToDatabase])
 
-  // Save cart to localStorage whenever it changes
+  // Save cart to localStorage and sync to database whenever it changes
   useEffect(() => {
+    if (isLoading) return // Don't sync during initial load
+    
     localStorage.setItem("pixelvault-cart", JSON.stringify(items))
-  }, [items])
+    // Sync to database (async, don't wait)
+    syncCartToDatabase(items).catch(() => {
+      // Silently fail - cart still works
+    })
+  }, [items, isLoading, syncCartToDatabase])
 
   const addItem = (product: Omit<CartItem, "quantity">) => {
     setItems((currentItems) => {

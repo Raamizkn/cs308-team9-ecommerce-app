@@ -17,12 +17,33 @@ export function ChatWidget({ initialOpen = false }: { initialOpen?: boolean }) {
   const [loading, setLoading] = useState(false)
   const [attachments, setAttachments] = useState<File[]>([])
   const [uploading, setUploading] = useState(false)
+  const [isNearBottom, setIsNearBottom] = useState(true)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const messagesContainerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     checkAuth()
+    checkIfSupportAgent()
   }, [])
+
+  const [isSupportAgent, setIsSupportAgent] = useState(false)
+
+  const checkIfSupportAgent = async () => {
+    const supabase = getSupabaseBrowserClient()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    
+    if (user?.id) {
+      const { data } = await supabase
+        .from("support_agents")
+        .select("uid")
+        .eq("uid", user.id)
+        .maybeSingle()
+      setIsSupportAgent(!!data)
+    }
+  }
 
   useEffect(() => {
     if (initialOpen) setIsOpen(true)
@@ -37,8 +58,33 @@ export function ChatWidget({ initialOpen = false }: { initialOpen?: boolean }) {
   }, [isOpen, userId, sessionId])
 
   useEffect(() => {
+    // Only auto-scroll if user is near bottom
+    if (isNearBottom) {
     scrollToBottom()
-  }, [messages])
+    }
+  }, [messages, isNearBottom])
+
+  // Detect scroll position
+  useEffect(() => {
+    const container = messagesContainerRef.current
+    if (!container) return
+
+    const handleScroll = () => {
+      const { scrollTop, scrollHeight, clientHeight } = container
+      // Consider "near bottom" if within 100px of bottom
+      const threshold = 100
+      const isAtBottom = scrollHeight - scrollTop - clientHeight < threshold
+      setIsNearBottom(isAtBottom)
+    }
+
+    container.addEventListener('scroll', handleScroll)
+    // Check initial position
+    handleScroll()
+
+    return () => {
+      container.removeEventListener('scroll', handleScroll)
+    }
+  }, [isOpen, userId, sessionId]) // Re-check when chat opens or user changes
 
   const checkAuth = async () => {
     const supabase = getSupabaseBrowserClient()
@@ -98,26 +144,58 @@ export function ChatWidget({ initialOpen = false }: { initialOpen?: boolean }) {
 
     setUploading(true)
     try {
-      // TODO: Connect to Supabase Storage or your backend
-      // const supabase = getSupabaseBrowserClient()
-      // const uploadPromises = attachments.map(async (file) => {
-      //   const fileExt = file.name.split('.').pop()
-      //   const fileName = `${userId}/${Date.now()}.${fileExt}`
-      //   const { data, error } = await supabase.storage
-      //     .from('chat-attachments')
-      //     .upload(fileName, file)
-      //   return data?.path
-      // })
-      // const urls = await Promise.all(uploadPromises)
-      // return urls
-
-      // For now, return mock URLs
-      return attachments.map((file) => ({
+      // Convert ALL files to data URLs so they persist in the database
+      // Blob URLs expire when the page refreshes, but data URLs persist
+      const filePromises = attachments.map(async (file) => {
+        return new Promise<{ name: string; type: string; size: number; url: string }>((resolve, reject) => {
+          const reader = new FileReader()
+          reader.onload = (e) => {
+            resolve({
         name: file.name,
         type: file.type,
         size: file.size,
-        url: `mock://uploads/${file.name}`, // Replace with real URL
-      }))
+              url: e.target?.result as string, // data:image/png;base64,... or data:application/pdf;base64,...
+            })
+          }
+          reader.onerror = () => {
+            // If FileReader fails, reject the promise
+            reject(new Error(`Failed to read file: ${file.name}`))
+          }
+          reader.readAsDataURL(file)
+        })
+      })
+
+      // Use Promise.allSettled to handle individual file failures
+      const results = await Promise.allSettled(filePromises)
+      const successfulFiles = results
+        .filter((result): result is PromiseFulfilledResult<{ name: string; type: string; size: number; url: string }> => 
+          result.status === 'fulfilled'
+        )
+        .map(result => result.value)
+      
+      const failedFiles = results
+        .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+        .map(result => result.reason?.message || 'Unknown error')
+
+      if (failedFiles.length > 0) {
+        console.error("[Group9] Some files failed to upload:", failedFiles)
+        if (successfulFiles.length === 0) {
+          toast({
+            title: "Upload failed",
+            description: "Failed to process files. Please try again.",
+            variant: "destructive",
+          })
+          return []
+        } else {
+          toast({
+            title: "Partial upload",
+            description: `${failedFiles.length} file(s) failed to upload, but ${successfulFiles.length} file(s) were processed.`,
+            variant: "default",
+          })
+        }
+      }
+
+      return successfulFiles
     } catch (error) {
       console.error("[Group9] Error uploading files:", error)
       toast({
@@ -166,6 +244,8 @@ export function ChatWidget({ initialOpen = false }: { initialOpen?: boolean }) {
       setNewMessage("")
       setAttachments([])
       fetchMessages()
+      // Force scroll when sending your own message
+      setTimeout(() => scrollToBottom(true), 100)
     } catch (error) {
       console.error("[Group9] Error sending message:", error)
       toast({
@@ -183,8 +263,15 @@ export function ChatWidget({ initialOpen = false }: { initialOpen?: boolean }) {
     return <FileText className="h-4 w-4" />
   }
 
-  const scrollToBottom = () => {
+  const scrollToBottom = (force = false) => {
+    if (force || isNearBottom) {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+    }
+  }
+
+  // Don't show chat widget for support agents (they have their own interface)
+  if (isSupportAgent) {
+    return null
   }
 
   // Show chat for both authenticated users and guests
@@ -220,7 +307,7 @@ export function ChatWidget({ initialOpen = false }: { initialOpen?: boolean }) {
           </div>
 
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-[#f8f9fa]">
+          <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-4 space-y-3 bg-[#f8f9fa]">
             {messages.length === 0 ? (
               <div className="text-center py-8">
                 <p className="text-[#6c757d] font-semibold">No messages yet</p>
@@ -236,20 +323,151 @@ export function ChatWidget({ initialOpen = false }: { initialOpen?: boolean }) {
                     <p className="text-sm text-[#1a1a3e] leading-relaxed">{msg.message}</p>
                     
                     {/* Attachments Display */}
-                    {msg.attachments && msg.attachments.length > 0 && (
-                      <div className="mt-2 space-y-1">
-                        {msg.attachments.map((file: any, idx: number) => (
-                          <div
-                            key={idx}
-                            className="flex items-center gap-2 p-2 bg-white/50 border border-black text-xs"
-                          >
+                    {(() => {
+                      let attachmentsArray = msg.attachments
+                      // Handle JSONB - might be string or already parsed
+                      if (typeof attachmentsArray === 'string') {
+                        try {
+                          attachmentsArray = JSON.parse(attachmentsArray)
+                        } catch (e) {
+                          attachmentsArray = null
+                        }
+                      }
+                      return attachmentsArray && Array.isArray(attachmentsArray) && attachmentsArray.length > 0 ? (
+                        <div className="mt-2 space-y-2">
+                          {attachmentsArray.map((file: any, idx: number) => {
+                            const isImage = file.type && file.type.startsWith('image/')
+                            const hasValidUrl = file.url && (file.url.startsWith('data:') || file.url.startsWith('blob:') || file.url.startsWith('http'))
+                            
+                            const handleDownload = async () => {
+                              if (!file.url || file.url.startsWith('mock://')) {
+                                toast({
+                                  title: "Download unavailable",
+                                  description: "File was not uploaded to storage. Download not available for this attachment.",
+                                  variant: "destructive",
+                                })
+                                return
+                              }
+
+                              try {
+                                let downloadUrl: string
+                                let shouldRevoke = false
+
+                                if (file.url.startsWith('data:')) {
+                                  // Convert data URL to blob URL for download
+                                  const response = await fetch(file.url)
+                                  const blob = await response.blob()
+                                  downloadUrl = URL.createObjectURL(blob)
+                                  shouldRevoke = true
+                                } else if (file.url.startsWith('blob:')) {
+                                  // Blob URLs can be used directly - they're already valid URLs
+                                  // However, if they're expired (from database), we need to handle that
+                                  downloadUrl = file.url
+                                  // Don't revoke - it might be managed elsewhere
+                                } else {
+                                  // For HTTP URLs, use directly
+                                  downloadUrl = file.url
+                                }
+
+                                const link = document.createElement('a')
+                                link.href = downloadUrl
+                                link.download = file.name || 'attachment'
+                                link.target = '_blank'
+                                document.body.appendChild(link)
+                                link.click()
+                                document.body.removeChild(link)
+
+                                // Clean up blob URL if we created one
+                                if (shouldRevoke && downloadUrl.startsWith('blob:')) {
+                                  setTimeout(() => URL.revokeObjectURL(downloadUrl), 100)
+                                }
+                              } catch (error) {
+                                console.error("[Group9] Error downloading file:", error)
+                                toast({
+                                  title: "Download failed",
+                                  description: "Failed to download file. The file may have expired or is no longer available.",
+                                  variant: "destructive",
+                                })
+                              }
+                            }
+                            
+                            return (
+                              <div key={idx} className="space-y-1">
+                                {isImage && hasValidUrl ? (
+                                  // Display image preview with download option
+                                  <div 
+                                    className="border-2 border-black relative group cursor-pointer"
+                                    style={{ cursor: 'pointer' }}
+                                    onClick={(e) => {
+                                      e.preventDefault()
+                                      e.stopPropagation()
+                                      handleDownload()
+                                    }}
+                                  >
+                                    <img
+                                      src={file.url}
+                                      alt={file.name || 'Attachment'}
+                                      className="max-w-full h-auto max-h-64 object-contain bg-[#f8f9fa] pointer-events-none select-none"
+                                      title="Click to download"
+                                      draggable={false}
+                                      onError={(e) => {
+                                        // Fallback to file display if image fails to load
+                                        const target = e.target as HTMLImageElement
+                                        target.style.display = 'none'
+                                        const fallback = target.nextElementSibling as HTMLElement
+                                        if (fallback) fallback.style.display = 'flex'
+                                      }}
+                                    />
+                                    <div className="hidden flex items-center gap-2 p-2 bg-white/50 border-t-2 border-black text-xs">
+                                      {getFileIcon(file.type)}
+                                      <span className="truncate flex-1">{file.name}</span>
+                                      <button
+                                        onClick={(e) => {
+                                          e.preventDefault()
+                                          e.stopPropagation()
+                                          handleDownload()
+                                        }}
+                                        className="text-[#5b3a8f] hover:underline"
+                                        title="Download"
+                                      >
+                                        Download
+                                      </button>
+                                      <span className="text-[#6c757d]">{file.size ? (file.size / 1024).toFixed(1) + 'KB' : ''}</span>
+                                    </div>
+                                    {/* Download overlay on hover */}
+                                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+                                      <span className="text-white text-xs font-bold bg-black/50 px-2 py-1 border-2 border-white">
+                                        Click to Download
+                                      </span>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  // Display file info for non-images with download button
+                                  <div className="flex items-center gap-2 p-2 bg-white/50 border border-black text-xs">
                             {getFileIcon(file.type)}
                             <span className="truncate flex-1">{file.name}</span>
-                            <span className="text-[#6c757d]">{(file.size / 1024).toFixed(1)}KB</span>
-                          </div>
-                        ))}
+                                    {file.url ? (
+                                      <button
+                                        onClick={(e) => {
+                                          e.preventDefault()
+                                          e.stopPropagation()
+                                          handleDownload()
+                                        }}
+                                        className="text-[#5b3a8f] hover:underline font-semibold"
+                                        title="Download file"
+                                      >
+                                        Download
+                                      </button>
+                                    ) : null}
+                                    <span className="text-[#6c757d]">{file.size ? (file.size / 1024).toFixed(1) + 'KB' : ''}</span>
                       </div>
                     )}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      ) : null
+                    })()}
 
                     <p className="text-xs text-[#6c757d] mt-1">
                       {new Date(msg.created_at).toLocaleTimeString("en-US", {
